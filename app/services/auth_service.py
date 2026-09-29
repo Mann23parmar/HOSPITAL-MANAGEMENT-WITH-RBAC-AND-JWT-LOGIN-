@@ -1,14 +1,19 @@
 import bcrypt
 from datetime import datetime, timedelta, timezone
-from jose import jwt
-from fastapi import Header, HTTPException
-from jose import JWTError, jwt
+
+from jose import jwt, JWTError
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.database.connection import users_collection
-from app.core.config import JWT_SECRET_KEY, JWT_ALGORITHM
-#password hashing service
 
+from app.database.connection import users_collection
+from app.core.config import (
+    JWT_SECRET_KEY,
+    JWT_ALGORITHM,
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+)
+
+
+# Hash password before storing it in MongoDB
 def hash_password(password: str) -> str:
     password_bytes = password.encode("utf-8")
 
@@ -20,17 +25,11 @@ def hash_password(password: str) -> str:
     return hashed_password.decode("utf-8")
 
 
-#this function convert password like in this manner 
-# "123456"
-#     ↓
-# convert to bytes
-#     ↓
-# bcrypt hashing
-#     ↓
-# hashed password
-
-
-def verify_password(password: str, hashed_password: str) -> bool:
+# Verify entered password with stored hashed password
+def verify_password(
+    password: str,
+    hashed_password: str
+) -> bool:
     password_bytes = password.encode("utf-8")
     hashed_password_bytes = hashed_password.encode("utf-8")
 
@@ -38,39 +37,35 @@ def verify_password(password: str, hashed_password: str) -> bool:
         password_bytes,
         hashed_password_bytes
     )
-    
-    
-    
-    
-#i put jwt creation function here 
-from app.core.config import (
-    JWT_SECRET_KEY,
-    JWT_ALGORITHM,
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES
-)
 
-def create_access_token(data:dict)->str:
-    to_encode=data.copy()
+
+# Create JWT access token
+def create_access_token(data: dict) -> str:
+    to_encode = data.copy()
+
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     )
+
     to_encode.update({
         "exp": expire
     })
+
     return jwt.encode(
         to_encode,
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM
     )
-    
-security = HTTPBearer()   
+
+
+# JWT Bearer authentication
 security = HTTPBearer()
 
 
+# Get currently logged-in user
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-
     token = credentials.credentials
 
     try:
@@ -80,9 +75,10 @@ def get_current_user(
             algorithms=[JWT_ALGORITHM]
         )
 
-        username = payload.get("sub")
+        # JWT "sub" now contains user's email
+        email = payload.get("sub")
 
-        if username is None:
+        if email is None:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token"
@@ -94,8 +90,9 @@ def get_current_user(
             detail="Invalid or expired token"
         )
 
+    # Find user using email
     current_user = users_collection.find_one({
-        "username": username
+        "email": email
     })
 
     if current_user is None:
@@ -104,4 +101,8 @@ def get_current_user(
             detail="User not found"
         )
 
-    return current_user
+    return {
+        "user_id": str(current_user["_id"]),
+        "email": current_user["email"],
+        "role": current_user["role"]
+    }

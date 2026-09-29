@@ -1,8 +1,9 @@
 from fastapi import Depends, HTTPException
+
 from app.services.auth_service import get_current_user
 
 
-#this function is for role based access
+# Role-based access control
 def require_role(*allowed_roles: str):
 
     def role_checker(
@@ -18,4 +19,3 @@ def require_role(*allowed_roles: str):
         return current_user
 
     return role_checker
-

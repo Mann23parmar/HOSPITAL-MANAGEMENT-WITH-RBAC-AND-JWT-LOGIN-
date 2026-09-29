@@ -1,85 +1,85 @@
 from pydantic import BaseModel, Field
 
 
-# This schema is for creating a medical record
 class MedicalRecordCreate(BaseModel):
 
     patient_id: str = Field(
         ...,
         min_length=24,
         max_length=24,
-        description="MongoDB patient ID",
-        examples=["6ab4bf465142012b9d33db70"]
+        examples=["66f123456789abcdef123456"]
     )
 
-    doctor: str = Field(
+    doctor_id: str = Field(
         ...,
-        min_length=2,
-        max_length=100,
-        description="Doctor name",
-        examples=["Dr. Patel"]
+        min_length=24,
+        max_length=24,
+        examples=["66f987654321abcdef654321"]
+    )
+
+    appointment_id: str = Field(
+        ...,
+        min_length=24,
+        max_length=24,
+        examples=["66f456789012abcdef456789"]
     )
 
     diagnosis: str = Field(
         ...,
         min_length=2,
-        max_length=200,
-        description="Patient diagnosis",
-        examples=["Fever"]
+        max_length=300,
+        examples=["Mild hypertension"]
     )
 
     treatment: str = Field(
         ...,
         min_length=2,
         max_length=500,
-        description="Treatment given to the patient",
-        examples=["Paracetamol and rest"]
+        examples=["Medication and regular blood pressure monitoring"]
     )
 
     notes: str = Field(
         ...,
         min_length=2,
         max_length=500,
-        description="Additional medical notes",
-        examples=["Follow-up after 3 days"]
+        examples=["Follow-up after two weeks"]
     )
 
 
-# This schema is for updating a medical record
 class MedicalRecordUpdate(BaseModel):
 
     patient_id: str = Field(
         ...,
         min_length=24,
-        max_length=24,
-        description="MongoDB patient ID",
-        examples=["6ab4bf465142012b9d33db70"]
+        max_length=24
     )
 
-    doctor: str = Field(
+    doctor_id: str = Field(
         ...,
-        min_length=2,
-        max_length=100,
-        examples=["Dr. Patel"]
+        min_length=24,
+        max_length=24
+    )
+
+    appointment_id: str = Field(
+        ...,
+        min_length=24,
+        max_length=24
     )
 
     diagnosis: str = Field(
         ...,
         min_length=2,
-        max_length=200,
-        examples=["Fever"]
+        max_length=300
     )
 
     treatment: str = Field(
         ...,
         min_length=2,
-        max_length=500,
-        examples=["Paracetamol and rest"]
+        max_length=500
     )
 
     notes: str = Field(
         ...,
         min_length=2,
-        max_length=500,
-        examples=["Follow-up after 3 days"]
+        max_length=500
     )

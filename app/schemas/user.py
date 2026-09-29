@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-
+from pydantic import BaseModel, Field
 from enum import Enum
+
 
 class Role(str, Enum):
     ADMIN = "admin"
@@ -8,15 +8,40 @@ class Role(str, Enum):
     NURSE = "nurse"
     RECEPTIONIST = "receptionist"
 
-#user crete means register pydantic schema
+
+# Admin uses this schema to create a user
 class UserCreate(BaseModel):
-    username: str
-    password: str
-    role: str
+
+    email: str = Field(
+        ...,
+        min_length=5,
+        max_length=100,
+        examples=["doctor@example.com"]
+    )
+
+    password: str = Field(
+        ...,
+        min_length=8,
+        max_length=100,
+        examples=["Doctor@123"]
+    )
+
+    role: Role
 
 
-#user login pydantic schema
+# User uses this schema to login
 class UserLogin(BaseModel):
-    username: str
-    password: str
-    
+
+    email: str = Field(
+        ...,
+        min_length=5,
+        max_length=100,
+        examples=["doctor@example.com"]
+    )
+
+    password: str = Field(
+        ...,
+        min_length=8,
+        max_length=100,
+        examples=["Doctor@123"]
+    )

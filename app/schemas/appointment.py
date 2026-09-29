@@ -1,76 +1,65 @@
 from pydantic import BaseModel, Field
 
-#this schema is for to create appointment
+
 class AppointmentCreate(BaseModel):
 
     patient_id: str = Field(
         ...,
         min_length=24,
         max_length=24,
-        description="MongoDB patient ID",
-        examples=["6ab4bf465142012b9d33db70"]
+        examples=["66f123456789abcdef123456"]
     )
 
-    doctor: str = Field(
+    doctor_id: str = Field(
         ...,
-        min_length=2,
-        max_length=100,
-        description="Doctor name",
-        examples=["Dr. Patel"]
+        min_length=24,
+        max_length=24,
+        examples=["66f987654321abcdef654321"]
     )
 
-    date: str = Field(
+    appointment_date: str = Field(
         ...,
-        description="Appointment date in YYYY-MM-DD format",
-        examples=["2026-09-25"]
+        examples=["2026-10-01"]
     )
 
-    time: str = Field(
+    appointment_time: str = Field(
         ...,
-        description="Appointment time in HH:MM format",
         examples=["10:30"]
     )
 
     reason: str = Field(
         ...,
-        min_length=2,
+        min_length=3,
         max_length=300,
-        description="Reason for appointment",
-        examples=["Regular checkup"]
+        examples=["Regular consultation"]
     )
 
-
-#this schema is to update appointment
 
 class AppointmentUpdate(BaseModel):
 
     patient_id: str = Field(
         ...,
         min_length=24,
-        max_length=24,
-        examples=["6ab4bf465142012b9d33db70"]
+        max_length=24
     )
 
-    doctor: str = Field(
+    doctor_id: str = Field(
         ...,
-        min_length=2,
-        max_length=100,
-        examples=["Dr. Patel"]
+        min_length=24,
+        max_length=24
     )
 
-    date: str = Field(
-        ...,
-        examples=["2026-09-25"]
-    )
+    appointment_date: str
 
-    time: str = Field(
-        ...,
-        examples=["10:30"]
-    )
+    appointment_time: str
 
     reason: str = Field(
         ...,
-        min_length=2,
-        max_length=300,
-        examples=["Regular checkup"]
+        min_length=3,
+        max_length=300
+    )
+
+    status: str = Field(
+        ...,
+        examples=["scheduled"]
     )
