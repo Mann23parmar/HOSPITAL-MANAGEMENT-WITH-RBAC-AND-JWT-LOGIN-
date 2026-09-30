@@ -45,6 +45,7 @@ def create_patient(
 
 
 # Get all patients
+# Get all patients
 @router.get("/patients")
 def get_patients(
     current_user: dict = Depends(
@@ -64,9 +65,15 @@ def get_patients(
         )
     )
 
+    for patient in patients:
+
+        # Convert created_by ObjectId to string
+        if "created_by" in patient:
+            patient["created_by"] = str(
+                patient["created_by"]
+            )
+
     return patients
-
-
 # Update patient
 @router.put("/patients/{patient_id}")
 def update_patient(

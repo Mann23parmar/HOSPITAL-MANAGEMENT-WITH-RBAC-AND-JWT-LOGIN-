@@ -96,6 +96,7 @@ def create_doctor(
 
 
 # Get all doctors
+# Get all doctors
 @router.get("/doctors")
 def get_doctors(
     current_user: dict = Depends(
@@ -115,13 +116,42 @@ def get_doctors(
         )
     )
 
-    # Convert MongoDB ObjectId values to strings
     for doctor in doctors:
-        doctor["user_id"] = str(doctor["user_id"])
-        doctor["department_id"] = str(doctor["department_id"])
+
+        # Convert user_id to string
+        if "user_id" in doctor:
+            user_id = str(doctor["user_id"])
+            doctor["user_id"] = user_id
+
+            # Get doctor email from users collection
+            user = users_collection.find_one(
+                {"_id": ObjectId(user_id)}
+            )
+
+            if user:
+                doctor["email"] = user["email"]
+            else:
+                doctor["email"] = "Unknown"
+
+        # Convert department_id to string
+        if "department_id" in doctor:
+            department_id = str(
+                doctor["department_id"]
+            )
+
+            doctor["department_id"] = department_id
+
+            # Get department name
+            department = departments_collection.find_one(
+                {"_id": ObjectId(department_id)}
+            )
+
+            if department:
+                doctor["department_name"] = department["name"]
+            else:
+                doctor["department_name"] = "Unknown"
 
     return doctors
-
 
 # Update doctor
 @router.put("/doctors/{doctor_id}")

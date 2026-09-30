@@ -117,7 +117,6 @@ def get_patient_vitals(
         )
     )
 ):
-
     vitals = list(
         patient_vitals_collection.find(
             {},
@@ -125,9 +124,24 @@ def get_patient_vitals(
         )
     )
 
+    for vital in vitals:
+
+        # Convert ObjectId to string
+        vital["patient_id"] = str(vital["patient_id"])
+        vital["nurse_id"] = str(vital["nurse_id"])
+
+        # Find patient using patient_id
+        patient = patients_collection.find_one(
+            {"_id": ObjectId(vital["patient_id"])}
+        )
+
+        # Add patient name
+        if patient:
+            vital["patient_name"] = patient["name"]
+        else:
+            vital["patient_name"] = "Unknown"
+
     return vitals
-
-
 # Update patient vitals
 @router.put("/patient-vitals/{vitals_id}")
 def update_patient_vitals(

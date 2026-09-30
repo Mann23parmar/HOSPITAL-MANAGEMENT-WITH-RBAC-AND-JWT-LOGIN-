@@ -124,6 +124,7 @@ def create_medical_record(
 
 
 # Get all medical records
+# Get all medical records
 @router.get("/medical-records")
 def get_medical_records(
     current_user: dict = Depends(
@@ -142,8 +143,38 @@ def get_medical_records(
         )
     )
 
-    return records
+    for record in records:
 
+        if "patient_id" in record:
+            patient_id = str(record["patient_id"])
+            record["patient_id"] = patient_id
+
+            patient = patients_collection.find_one(
+                {"_id": ObjectId(patient_id)}
+            )
+
+            record["patient_name"] = (
+                patient["name"] if patient else "Unknown"
+            )
+
+        if "doctor_id" in record:
+            doctor_id = str(record["doctor_id"])
+            record["doctor_id"] = doctor_id
+
+            doctor = doctors_collection.find_one(
+                {"_id": ObjectId(doctor_id)}
+            )
+
+            record["doctor_name"] = (
+                doctor["name"] if doctor else "Unknown"
+            )
+
+        if "appointment_id" in record:
+            record["appointment_id"] = str(
+                record["appointment_id"]
+            )
+
+    return records
 
 # Update medical record
 @router.put("/medical-records/{record_id}")

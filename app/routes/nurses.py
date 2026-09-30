@@ -95,6 +95,7 @@ def create_nurse(
 
 
 # Get all nurses
+# Get all nurses
 @router.get("/nurses")
 def get_nurses(
     current_user: dict = Depends(
@@ -113,9 +114,35 @@ def get_nurses(
         )
     )
 
+    for nurse in nurses:
+
+        # Convert user_id to string
+        if "user_id" in nurse:
+            nurse["user_id"] = str(
+                nurse["user_id"]
+            )
+
+        # Convert department_id to string
+        if "department_id" in nurse:
+            department_id = str(
+                nurse["department_id"]
+            )
+
+            nurse["department_id"] = department_id
+
+            # Get department name
+            department = departments_collection.find_one(
+                {
+                    "_id": ObjectId(department_id)
+                }
+            )
+
+            if department:
+                nurse["department_name"] = department["name"]
+            else:
+                nurse["department_name"] = "Unknown"
+
     return nurses
-
-
 # Update nurse
 @router.put("/nurses/{nurse_id}")
 def update_nurse(

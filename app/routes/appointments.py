@@ -103,8 +103,41 @@ def get_appointments(
         )
     )
 
-    return appointments
+    for appointment in appointments:
 
+        # Patient
+        if "patient_id" in appointment:
+            patient_id = str(appointment["patient_id"])
+            appointment["patient_id"] = patient_id
+
+            patient = patients_collection.find_one(
+                {"_id": ObjectId(patient_id)}
+            )
+
+            appointment["patient_name"] = (
+                patient["name"] if patient else "Unknown"
+            )
+
+        # Doctor
+        if "doctor_id" in appointment:
+            doctor_id = str(appointment["doctor_id"])
+            appointment["doctor_id"] = doctor_id
+
+            doctor = doctors_collection.find_one(
+                {"_id": ObjectId(doctor_id)}
+            )
+
+            appointment["doctor_name"] = (
+                doctor["name"] if doctor else "Unknown"
+            )
+
+        # Created by
+        if "created_by" in appointment:
+            appointment["created_by"] = str(
+                appointment["created_by"]
+            )
+
+    return appointments
 
 # Update appointment
 @router.put("/appointments/{appointment_id}")

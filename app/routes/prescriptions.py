@@ -154,6 +154,7 @@ def create_prescription(
 
 
 # Get all prescriptions
+# Get all prescriptions
 @router.get("/prescriptions")
 def get_prescriptions(
     current_user: dict = Depends(
@@ -171,6 +172,49 @@ def get_prescriptions(
             {"_id": 0}
         )
     )
+
+    for prescription in prescriptions:
+
+        if "patient_id" in prescription:
+            patient_id = str(prescription["patient_id"])
+            prescription["patient_id"] = patient_id
+
+            patient = patients_collection.find_one(
+                {"_id": ObjectId(patient_id)}
+            )
+
+            prescription["patient_name"] = (
+                patient["name"] if patient else "Unknown"
+            )
+
+        if "doctor_id" in prescription:
+            doctor_id = str(prescription["doctor_id"])
+            prescription["doctor_id"] = doctor_id
+
+            doctor = doctors_collection.find_one(
+                {"_id": ObjectId(doctor_id)}
+            )
+
+            prescription["doctor_name"] = (
+                doctor["name"] if doctor else "Unknown"
+            )
+
+        if "medical_record_id" in prescription:
+            prescription["medical_record_id"] = str(
+                prescription["medical_record_id"]
+            )
+
+        if "medicine_id" in prescription:
+            medicine_id = str(prescription["medicine_id"])
+            prescription["medicine_id"] = medicine_id
+
+            medicine = medicines_collection.find_one(
+                {"_id": ObjectId(medicine_id)}
+            )
+
+            prescription["medicine_name"] = (
+                medicine["name"] if medicine else "Unknown"
+            )
 
     return prescriptions
 
