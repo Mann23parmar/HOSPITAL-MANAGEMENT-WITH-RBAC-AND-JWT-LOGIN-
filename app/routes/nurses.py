@@ -171,7 +171,7 @@ def update_nurse(
         )
 
     # Get only fields actually provided
-    update_data = nurse.model_dump(exclude_unset=True)
+    update_data = nurse.model_dump(exclude_unset=True)     #suppose schema contain >1 filed and you want to modify only one field then it does not overwrite other fields  
 
     if not update_data:
         raise HTTPException(
@@ -259,7 +259,7 @@ def update_nurse(
         "message": "Nurse updated successfully"
     }
 
-# Delete nurse
+# Delete nurse endpoint
 @router.delete("/nurses/{nurse_id}")
 def delete_nurse(
     nurse_id: str,
