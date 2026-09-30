@@ -80,13 +80,17 @@ def update_patient(
     patient_id: str,
     patient: PatientUpdate,
     current_user: dict = Depends(
-        require_role("admin", "receptionist")
+        require_role(
+            "admin",
+            "receptionist"
+        )
     )
 ):
 
-    # Check patient ID
+    # Validate patient ID
     try:
         patient_object_id = ObjectId(patient_id)
+
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -104,28 +108,48 @@ def update_patient(
             detail="Patient not found"
         )
 
-    # Check duplicate phone
-    duplicate_phone = patients_collection.find_one(
-        {
-            "phone": patient.phone,
-            "_id": {"$ne": patient_object_id}
-        }
+    # Get only the fields provided in the request
+    update_data = patient.model_dump(
+        exclude_unset=True
     )
 
-    if duplicate_phone:
+    # Check if at least one field was provided
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Another patient already uses this phone number"
+            detail="At least one field is required for update"
         )
 
+    # Check duplicate phone number
+    if "phone" in update_data:
+
+        existing_phone = patients_collection.find_one(
+            {
+                "phone": update_data["phone"],
+                "_id": {
+                    "$ne": patient_object_id
+                }
+            }
+        )
+
+        if existing_phone:
+            raise HTTPException(
+                status_code=400,
+                detail="Patient with this phone number already exists"
+            )
+
+    # Update only the provided fields
     patients_collection.update_one(
         {"_id": patient_object_id},
-        {"$set": patient.model_dump()}
+        {
+            "$set": update_data
+        }
     )
 
     return {
         "message": "Patient updated successfully"
     }
+
 
 
 # Delete patient

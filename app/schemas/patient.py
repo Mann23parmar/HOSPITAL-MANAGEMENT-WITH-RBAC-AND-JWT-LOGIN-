@@ -53,40 +53,40 @@ class PatientCreate(BaseModel):
 
 class PatientUpdate(BaseModel):
 
-    name: str = Field(
-        ...,
+    name: str | None = Field(
+        default=None,
         min_length=2,
         max_length=100
     )
 
-    date_of_birth: str
+    date_of_birth: str | None = None
 
-    gender: str = Field(
-        ...,
+    gender: str | None = Field(
+        default=None,
         min_length=1,
         max_length=20
     )
 
-    phone: str = Field(
-        ...,
+    phone: str | None = Field(
+        default=None,
         min_length=10,
         max_length=15
     )
 
-    address: str = Field(
-        ...,
+    address: str | None = Field(
+        default=None,
         min_length=5,
         max_length=200
     )
 
-    emergency_contact: str = Field(
-        ...,
+    emergency_contact: str | None = Field(
+        default=None,
         min_length=10,
         max_length=15
     )
 
-    blood_group: str = Field(
-        ...,
+    blood_group: str | None = Field(
+        default=None,
         min_length=2,
         max_length=5
     )

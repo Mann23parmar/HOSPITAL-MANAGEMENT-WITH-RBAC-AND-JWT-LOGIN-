@@ -181,85 +181,96 @@ def update_doctor(
             detail="Doctor not found"
         )
 
-    # Check user ID
-    try:
-        user_object_id = ObjectId(doctor.user_id)
-    except InvalidId:
+    # Get only fields provided by the user
+    update_data = doctor.model_dump(exclude_unset=True)
+
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Invalid user ID"
+            detail="At least one field is required for update"
         )
 
-    # Check user exists
-    user = users_collection.find_one(
-        {"_id": user_object_id}
-    )
+    # Validate user_id only if provided
+    if "user_id" in update_data:
 
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
+        try:
+            user_object_id = ObjectId(
+                update_data["user_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid user ID"
+            )
+
+        user = users_collection.find_one(
+            {"_id": user_object_id}
         )
 
-    # Check user has doctor role
-    if user["role"] != "doctor":
-        raise HTTPException(
-            status_code=400,
-            detail="Selected user does not have doctor role"
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        if user["role"] != "doctor":
+            raise HTTPException(
+                status_code=400,
+                detail="Selected user does not have doctor role"
+            )
+
+        update_data["user_id"] = user_object_id
+
+    # Validate department_id only if provided
+    if "department_id" in update_data:
+
+        try:
+            department_object_id = ObjectId(
+                update_data["department_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid department ID"
+            )
+
+        department = departments_collection.find_one(
+            {"_id": department_object_id}
         )
 
-    # Check department ID
-    try:
-        department_object_id = ObjectId(doctor.department_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid department ID"
+        if not department:
+            raise HTTPException(
+                status_code=404,
+                detail="Department not found"
+            )
+
+        update_data["department_id"] = department_object_id
+
+    # Check duplicate phone only if phone is provided
+    if "phone" in update_data:
+
+        duplicate_phone = doctors_collection.find_one(
+            {
+                "phone": update_data["phone"],
+                "_id": {"$ne": doctor_object_id}
+            }
         )
 
-    # Check department exists
-    department = departments_collection.find_one(
-        {"_id": department_object_id}
-    )
+        if duplicate_phone:
+            raise HTTPException(
+                status_code=400,
+                detail="Another doctor already uses this phone number"
+            )
 
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
-        )
-
-    # Check duplicate phone
-    duplicate_phone = doctors_collection.find_one(
-        {
-            "phone": doctor.phone,
-            "_id": {"$ne": doctor_object_id}
-        }
-    )
-
-    if duplicate_phone:
-        raise HTTPException(
-            status_code=400,
-            detail="Another doctor already uses this phone number"
-        )
-
+    # Update only provided fields
     doctors_collection.update_one(
         {"_id": doctor_object_id},
-        {
-            "$set": {
-                "user_id": user_object_id,
-                "department_id": department_object_id,
-                "name": doctor.name,
-                "specialization": doctor.specialization,
-                "phone": doctor.phone
-            }
-        }
+        {"$set": update_data}
     )
 
     return {
         "message": "Doctor updated successfully"
     }
-
-
 # Delete doctor
 @router.delete("/doctors/{doctor_id}")
 def delete_doctor(

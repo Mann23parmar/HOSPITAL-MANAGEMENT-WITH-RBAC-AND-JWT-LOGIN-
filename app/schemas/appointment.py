@@ -37,29 +37,29 @@ class AppointmentCreate(BaseModel):
 
 class AppointmentUpdate(BaseModel):
 
-    patient_id: str = Field(
-        ...,
+    patient_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    doctor_id: str = Field(
-        ...,
+    doctor_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    appointment_date: str
+    appointment_date: str | None = None
 
-    appointment_time: str
+    appointment_time: str | None = None
 
-    reason: str = Field(
-        ...,
+    reason: str | None = Field(
+        default=None,
         min_length=3,
         max_length=300
     )
 
-    status: str = Field(
-        ...,
+    status: str | None = Field(
+        default=None,
         examples=["scheduled"]
     )

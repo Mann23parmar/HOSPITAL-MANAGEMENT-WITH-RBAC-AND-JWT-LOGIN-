@@ -62,50 +62,50 @@ class PrescriptionCreate(BaseModel):
 
 class PrescriptionUpdate(BaseModel):
 
-    patient_id: str = Field(
-        ...,
+    patient_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    doctor_id: str = Field(
-        ...,
+    doctor_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    medical_record_id: str = Field(
-        ...,
+    medical_record_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    medicine_id: str = Field(
-        ...,
+    medicine_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    dosage: str = Field(
-        ...,
+    dosage: str | None = Field(
+        default=None,
         min_length=1,
         max_length=100
     )
 
-    frequency: str = Field(
-        ...,
+    frequency: str | None = Field(
+        default=None,
         min_length=1,
         max_length=100
     )
 
-    duration: str = Field(
-        ...,
+    duration: str | None = Field(
+        default=None,
         min_length=1,
         max_length=100
     )
 
-    instructions: str = Field(
-        ...,
+    instructions: str | None = Field(
+        default=None,
         min_length=2,
         max_length=300
     )

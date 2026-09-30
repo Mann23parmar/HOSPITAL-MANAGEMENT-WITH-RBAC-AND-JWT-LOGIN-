@@ -206,64 +206,111 @@ def update_medical_record(
             detail="Medical record not found"
         )
 
-    # Check patient ID
-    try:
-        patient_object_id = ObjectId(record.patient_id)
-    except InvalidId:
+    # Get only fields provided by the user
+    update_data = record.model_dump(exclude_unset=True)
+
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Invalid patient ID"
+            detail="At least one field is required for update"
         )
 
-    patient = patients_collection.find_one(
-        {"_id": patient_object_id}
-    )
+    # Use new patient_id if provided,
+    # otherwise use existing patient_id
+    if "patient_id" in update_data:
 
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
+        try:
+            patient_object_id = ObjectId(
+                update_data["patient_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid patient ID"
+            )
+
+        patient = patients_collection.find_one(
+            {"_id": patient_object_id}
         )
 
-    # Check doctor ID
-    try:
-        doctor_object_id = ObjectId(record.doctor_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
+        if not patient:
+            raise HTTPException(
+                status_code=404,
+                detail="Patient not found"
+            )
+
+        update_data["patient_id"] = patient_object_id
+
+    else:
+        patient_object_id = existing_record["patient_id"]
+
+    # Use new doctor_id if provided,
+    # otherwise use existing doctor_id
+    if "doctor_id" in update_data:
+
+        try:
+            doctor_object_id = ObjectId(
+                update_data["doctor_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid doctor ID"
+            )
+
+        doctor = doctors_collection.find_one(
+            {"_id": doctor_object_id}
         )
 
-    doctor = doctors_collection.find_one(
-        {"_id": doctor_object_id}
-    )
+        if not doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Doctor not found"
+            )
 
-    if not doctor:
-        raise HTTPException(
-            status_code=404,
-            detail="Doctor not found"
+        update_data["doctor_id"] = doctor_object_id
+
+    else:
+        doctor_object_id = existing_record["doctor_id"]
+
+    # Use new appointment_id if provided,
+    # otherwise use existing appointment_id
+    if "appointment_id" in update_data:
+
+        try:
+            appointment_object_id = ObjectId(
+                update_data["appointment_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid appointment ID"
+            )
+
+        appointment = appointments_collection.find_one(
+            {"_id": appointment_object_id}
         )
 
-    # Check appointment ID
-    try:
-        appointment_object_id = ObjectId(
-            record.appointment_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid appointment ID"
+        if not appointment:
+            raise HTTPException(
+                status_code=404,
+                detail="Appointment not found"
+            )
+
+        update_data["appointment_id"] = appointment_object_id
+
+    else:
+        appointment_object_id = existing_record["appointment_id"]
+
+        appointment = appointments_collection.find_one(
+            {"_id": appointment_object_id}
         )
 
-    appointment = appointments_collection.find_one(
-        {"_id": appointment_object_id}
-    )
-
-    if not appointment:
-        raise HTTPException(
-            status_code=404,
-            detail="Appointment not found"
-        )
+        if not appointment:
+            raise HTTPException(
+                status_code=404,
+                detail="Appointment not found"
+            )
 
     # Check appointment belongs to patient
     if appointment["patient_id"] != patient_object_id:
@@ -279,18 +326,10 @@ def update_medical_record(
             detail="Appointment does not belong to this doctor"
         )
 
+    # Update only provided fields
     medical_records_collection.update_one(
         {"_id": record_object_id},
-        {
-            "$set": {
-                "patient_id": patient_object_id,
-                "doctor_id": doctor_object_id,
-                "appointment_id": appointment_object_id,
-                "diagnosis": record.diagnosis,
-                "treatment": record.treatment,
-                "notes": record.notes
-            }
-        }
+        {"$set": update_data}
     )
 
     return {

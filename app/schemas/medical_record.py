@@ -48,38 +48,38 @@ class MedicalRecordCreate(BaseModel):
 
 class MedicalRecordUpdate(BaseModel):
 
-    patient_id: str = Field(
-        ...,
+    patient_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    doctor_id: str = Field(
-        ...,
+    doctor_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    appointment_id: str = Field(
-        ...,
+    appointment_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    diagnosis: str = Field(
-        ...,
+    diagnosis: str | None = Field(
+        default=None,
         min_length=2,
         max_length=300
     )
 
-    treatment: str = Field(
-        ...,
+    treatment: str | None = Field(
+        default=None,
         min_length=2,
         max_length=500
     )
 
-    notes: str = Field(
-        ...,
+    notes: str | None = Field(
+        default=None,
         min_length=2,
         max_length=500
     )

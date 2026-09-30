@@ -45,35 +45,35 @@ class PatientVitalsCreate(BaseModel):
 
 class PatientVitalsUpdate(BaseModel):
 
-    patient_id: str = Field(
-        ...,
+    patient_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    nurse_id: str = Field(
-        ...,
+    nurse_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    blood_pressure: str = Field(
-        ...,
+    blood_pressure: str | None = Field(
+        default=None,
         min_length=3,
         max_length=20
     )
 
-    temperature: StrictFloat = Field(
-        ...,
+    temperature: StrictFloat | None = Field(
+        default=None,
         gt=0
     )
 
-    pulse_rate: StrictInt = Field(
-        ...,
+    pulse_rate: StrictInt | None = Field(
+        default=None,
         gt=0
     )
 
-    weight: StrictFloat = Field(
-        ...,
+    weight: StrictFloat | None = Field(
+        default=None,
         gt=0
     )

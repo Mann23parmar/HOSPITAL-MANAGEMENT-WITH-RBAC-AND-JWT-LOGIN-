@@ -220,7 +220,6 @@ def get_prescriptions(
 
 
 # Update prescription
-@router.put("/prescriptions/{prescription_id}")
 def update_prescription(
     prescription_id: str,
     prescription: PrescriptionUpdate,
@@ -251,125 +250,164 @@ def update_prescription(
             detail="Prescription not found"
         )
 
-    # Validate patient ID
-    try:
-        patient_object_id = ObjectId(
-            prescription.patient_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
-    patient = patients_collection.find_one(
-        {"_id": patient_object_id}
+    # Get only fields provided by the user
+    update_data = prescription.model_dump(
+        exclude_unset=True
     )
 
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
-        )
-
-    # Validate doctor ID
-    try:
-        doctor_object_id = ObjectId(
-            prescription.doctor_id
-        )
-    except InvalidId:
+    # Check if at least one field was provided
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Invalid doctor ID"
+            detail="At least one field is required for update"
         )
 
-    doctor = doctors_collection.find_one(
-        {"_id": doctor_object_id}
-    )
+    # Validate patient ID only if provided
+    if "patient_id" in update_data:
 
-    if not doctor:
-        raise HTTPException(
-            status_code=404,
-            detail="Doctor not found"
+        try:
+            patient_object_id = ObjectId(
+                update_data["patient_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid patient ID"
+            )
+
+        patient = patients_collection.find_one(
+            {"_id": patient_object_id}
         )
 
-    # Validate medical record ID
-    try:
-        medical_record_object_id = ObjectId(
-            prescription.medical_record_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid medical record ID"
+        if not patient:
+            raise HTTPException(
+                status_code=404,
+                detail="Patient not found"
+            )
+
+        update_data["patient_id"] = patient_object_id
+
+    else:
+        patient_object_id = existing_prescription["patient_id"]
+
+    # Validate doctor ID only if provided
+    if "doctor_id" in update_data:
+
+        try:
+            doctor_object_id = ObjectId(
+                update_data["doctor_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid doctor ID"
+            )
+
+        doctor = doctors_collection.find_one(
+            {"_id": doctor_object_id}
         )
 
-    medical_record = medical_records_collection.find_one(
-        {"_id": medical_record_object_id}
-    )
+        if not doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Doctor not found"
+            )
 
-    if not medical_record:
-        raise HTTPException(
-            status_code=404,
-            detail="Medical record not found"
+        update_data["doctor_id"] = doctor_object_id
+
+    else:
+        doctor_object_id = existing_prescription["doctor_id"]
+
+    # Validate medical record ID only if provided
+    if "medical_record_id" in update_data:
+
+        try:
+            medical_record_object_id = ObjectId(
+                update_data["medical_record_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid medical record ID"
+            )
+
+        medical_record = medical_records_collection.find_one(
+            {"_id": medical_record_object_id}
         )
 
-    # Check medical record relationship
+        if not medical_record:
+            raise HTTPException(
+                status_code=404,
+                detail="Medical record not found"
+            )
+
+        update_data["medical_record_id"] = medical_record_object_id
+
+    else:
+        medical_record = medical_records_collection.find_one(
+            {
+                "_id": existing_prescription[
+                    "medical_record_id"
+                ]
+            }
+        )
+
+        if not medical_record:
+            raise HTTPException(
+                status_code=404,
+                detail="Medical record not found"
+            )
+
+    # Check medical record belongs to patient
     if medical_record["patient_id"] != patient_object_id:
         raise HTTPException(
             status_code=400,
             detail="Medical record does not belong to this patient"
         )
 
+    # Check medical record belongs to doctor
     if medical_record["doctor_id"] != doctor_object_id:
         raise HTTPException(
             status_code=400,
             detail="Medical record does not belong to this doctor"
         )
 
-    # Validate medicine ID
-    try:
-        medicine_object_id = ObjectId(
-            prescription.medicine_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid medicine ID"
-        )
+    # Validate medicine ID only if provided
+    if "medicine_id" in update_data:
 
-    medicine = medicines_collection.find_one(
-        {"_id": medicine_object_id}
-    )
+        try:
+            medicine_object_id = ObjectId(
+                update_data["medicine_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid medicine ID"
+            )
 
-    if not medicine:
-        raise HTTPException(
-            status_code=404,
-            detail="Medicine not found"
+        medicine = medicines_collection.find_one(
+            {"_id": medicine_object_id}
         )
 
-    # Update prescription
+        if not medicine:
+            raise HTTPException(
+                status_code=404,
+                detail="Medicine not found"
+            )
+
+        update_data["medicine_id"] = medicine_object_id
+
+    # Update only provided fields
     prescriptions_collection.update_one(
         {"_id": prescription_object_id},
         {
-            "$set": {
-                "patient_id": patient_object_id,
-                "doctor_id": doctor_object_id,
-                "medical_record_id": medical_record_object_id,
-                "medicine_id": medicine_object_id,
-                "dosage": prescription.dosage,
-                "frequency": prescription.frequency,
-                "duration": prescription.duration,
-                "instructions": prescription.instructions
-            }
+            "$set": update_data
         }
     )
 
     return {
         "message": "Prescription updated successfully"
     }
-
-
 # Delete prescription
 @router.delete("/prescriptions/{prescription_id}")
 def delete_prescription(

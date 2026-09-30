@@ -91,24 +91,47 @@ def update_medicine(
             detail="Medicine not found"
         )
 
-    # Check duplicate medicine
-    duplicate_medicine = medicines_collection.find_one(
-        {
-            "name": medicine.name,
-            "manufacturer": medicine.manufacturer,
-            "_id": {"$ne": medicine_object_id}
-        }
-    )
+    # Get only fields provided by the user
+    update_data = medicine.model_dump(exclude_unset=True)
 
-    if duplicate_medicine:
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Another medicine with this name and manufacturer already exists"
+            detail="At least one field is required for update"
         )
 
+    # Check duplicate medicine only when
+    # name or manufacturer is being updated
+    if "name" in update_data or "manufacturer" in update_data:
+
+        medicine_name = update_data.get(
+            "name",
+            existing_medicine["name"]
+        )
+
+        medicine_manufacturer = update_data.get(
+            "manufacturer",
+            existing_medicine["manufacturer"]
+        )
+
+        duplicate_medicine = medicines_collection.find_one(
+            {
+                "name": medicine_name,
+                "manufacturer": medicine_manufacturer,
+                "_id": {"$ne": medicine_object_id}
+            }
+        )
+
+        if duplicate_medicine:
+            raise HTTPException(
+                status_code=400,
+                detail="Another medicine with this name and manufacturer already exists"
+            )
+
+    # Update only provided fields
     medicines_collection.update_one(
         {"_id": medicine_object_id},
-        {"$set": medicine.model_dump()}
+        {"$set": update_data}
     )
 
     return {

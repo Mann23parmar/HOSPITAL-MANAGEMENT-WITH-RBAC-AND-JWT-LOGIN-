@@ -172,76 +172,91 @@ def update_patient_vitals(
             detail="Patient vitals not found"
         )
 
-    # Validate patient ID
-    try:
-        patient_object_id = ObjectId(vitals.patient_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
-    # Check patient exists
-    patient = patients_collection.find_one(
-        {"_id": patient_object_id}
+    # Get only fields provided by the user
+    update_data = vitals.model_dump(
+        exclude_unset=True
     )
 
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
-        )
-
-    # Validate nurse ID
-    try:
-        nurse_object_id = ObjectId(vitals.nurse_id)
-    except InvalidId:
+    # Check if at least one field was provided
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Invalid nurse ID"
+            detail="At least one field is required for update"
         )
 
-    # Check nurse exists
-    nurse = nurses_collection.find_one(
-        {"_id": nurse_object_id}
-    )
+    # Validate patient ID only if provided
+    if "patient_id" in update_data:
 
-    if not nurse:
-        raise HTTPException(
-            status_code=404,
-            detail="Nurse not found"
+        try:
+            patient_object_id = ObjectId(
+                update_data["patient_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid patient ID"
+            )
+
+        patient = patients_collection.find_one(
+            {"_id": patient_object_id}
         )
 
-    # Check linked nurse user exists
-    nurse_user = users_collection.find_one(
-        {"_id": nurse["user_id"]}
-    )
+        if not patient:
+            raise HTTPException(
+                status_code=404,
+                detail="Patient not found"
+            )
 
-    if not nurse_user:
-        raise HTTPException(
-            status_code=404,
-            detail="Nurse user account not found"
+        update_data["patient_id"] = patient_object_id
+
+    # Validate nurse ID only if provided
+    if "nurse_id" in update_data:
+
+        try:
+            nurse_object_id = ObjectId(
+                update_data["nurse_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid nurse ID"
+            )
+
+        nurse = nurses_collection.find_one(
+            {"_id": nurse_object_id}
         )
 
-    # Check linked user has nurse role
-    if nurse_user["role"] != "nurse":
-        raise HTTPException(
-            status_code=400,
-            detail="Selected user does not have nurse role"
+        if not nurse:
+            raise HTTPException(
+                status_code=404,
+                detail="Nurse not found"
+            )
+
+        # Check linked nurse user exists
+        nurse_user = users_collection.find_one(
+            {"_id": nurse["user_id"]}
         )
 
-    # Update vitals
+        if not nurse_user:
+            raise HTTPException(
+                status_code=404,
+                detail="Nurse user account not found"
+            )
+
+        # Check linked user has nurse role
+        if nurse_user["role"] != "nurse":
+            raise HTTPException(
+                status_code=400,
+                detail="Selected user does not have nurse role"
+            )
+
+        update_data["nurse_id"] = nurse_object_id
+
+    # Update only provided fields
     patient_vitals_collection.update_one(
         {"_id": vitals_object_id},
         {
-            "$set": {
-                "patient_id": patient_object_id,
-                "nurse_id": nurse_object_id,
-                "blood_pressure": vitals.blood_pressure,
-                "temperature": vitals.temperature,
-                "pulse_rate": vitals.pulse_rate,
-                "weight": vitals.weight
-            }
+            "$set": update_data
         }
     )
 

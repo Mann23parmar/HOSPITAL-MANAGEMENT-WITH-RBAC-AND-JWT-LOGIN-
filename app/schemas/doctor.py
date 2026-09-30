@@ -41,32 +41,32 @@ class DoctorCreate(BaseModel):
 
 class DoctorUpdate(BaseModel):
 
-    user_id: str = Field(
-        ...,
+    user_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    department_id: str = Field(
-        ...,
+    department_id: str | None = Field(
+        default=None,
         min_length=24,
         max_length=24
     )
 
-    name: str = Field(
-        ...,
+    name: str | None = Field(
+        default=None,
         min_length=2,
         max_length=100
     )
 
-    specialization: str = Field(
-        ...,
+    specialization: str | None = Field(
+        default=None,
         min_length=2,
         max_length=100
     )
 
-    phone: str = Field(
-        ...,
+    phone: str | None = Field(
+        default=None,
         min_length=10,
         max_length=15
     )

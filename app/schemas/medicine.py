@@ -37,26 +37,26 @@ class MedicineCreate(BaseModel):
 
 class MedicineUpdate(BaseModel):
 
-    name: str = Field(
-        ...,
+    name: str | None = Field(
+        default=None,
         min_length=2,
         max_length=100
     )
 
-    manufacturer: str = Field(
-        ...,
+    manufacturer: str | None = Field(
+        default=None,
         min_length=2,
         max_length=100
     )
 
-    quantity: StrictInt = Field(
-        ...,
+    quantity: StrictInt | None = Field(
+        default=None,
         ge=0
     )
 
-    price: StrictFloat = Field(
-        ...,
+    price: StrictFloat | None = Field(
+        default=None,
         gt=0
     )
 
-    expiry_date: str
+    expiry_date: str | None = None

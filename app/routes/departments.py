@@ -65,6 +65,7 @@ def update_department(
     department: DepartmentUpdate,
     current_user: dict = Depends(require_role("admin"))
 ):
+    # Check department ID
     try:
         department_object_id = ObjectId(department_id)
     except InvalidId:
@@ -84,29 +85,40 @@ def update_department(
             detail="Department not found"
         )
 
-    # Check duplicate name
-    duplicate_department = departments_collection.find_one(
-        {
-            "name": department.name,
-            "_id": {"$ne": department_object_id}
-        }
-    )
+    # Get only fields provided by the user
+    update_data = department.model_dump(exclude_unset=True)
 
-    if duplicate_department:
+    if not update_data:
         raise HTTPException(
             status_code=400,
-            detail="Another department with this name already exists"
+            detail="At least one field is required for update"
         )
 
+    # Check duplicate name only if name is being updated
+    if "name" in update_data:
+
+        duplicate_department = departments_collection.find_one(
+            {
+                "name": update_data["name"],
+                "_id": {"$ne": department_object_id}
+            }
+        )
+
+        if duplicate_department:
+            raise HTTPException(
+                status_code=400,
+                detail="Another department with this name already exists"
+            )
+
+    # Update only provided fields
     departments_collection.update_one(
         {"_id": department_object_id},
-        {"$set": department.model_dump()}
+        {"$set": update_data}
     )
 
     return {
         "message": "Department updated successfully"
     }
-
 
 # Delete department
 @router.delete("/departments/{department_id}")
