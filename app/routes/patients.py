@@ -33,9 +33,7 @@ def create_patient(
     patient_data = patient.model_dump()
 
     # Store the ID of the logged-in user
-    patient_data["created_by"] = ObjectId(
-        current_user["user_id"]
-    )
+    patient_data["created_by"] = ObjectId(current_user["user_id"] )
 
     patients_collection.insert_one(patient_data)
 
