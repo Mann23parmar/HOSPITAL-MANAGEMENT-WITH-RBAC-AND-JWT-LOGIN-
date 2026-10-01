@@ -1,22 +1,23 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictStr
 
 
 class DepartmentCreate(BaseModel):
-    name: str = Field(
+
+    name: StrictStr = Field(
         ...,
         min_length=2,
         max_length=100,
         examples=["Cardiology"]
     )
 
-    location: str = Field(
+    location: StrictStr = Field(
         ...,
         min_length=2,
         max_length=100,
         examples=["2nd Floor"]
     )
 
-    description: str = Field(
+    description: StrictStr = Field(
         ...,
         min_length=5,
         max_length=300,
@@ -25,21 +26,22 @@ class DepartmentCreate(BaseModel):
 
 
 class DepartmentUpdate(BaseModel):
-    name: str | None = Field(
+
+    name: StrictStr | None = Field(
         default=None,
         min_length=2,
         max_length=100,
         examples=["Cardiology"]
     )
 
-    location: str | None = Field(
+    location: StrictStr | None = Field(
         default=None,
         min_length=2,
         max_length=100,
         examples=["2nd Floor"]
     )
 
-    description: str | None = Field(
+    description: StrictStr | None = Field(
         default=None,
         min_length=5,
         max_length=300,

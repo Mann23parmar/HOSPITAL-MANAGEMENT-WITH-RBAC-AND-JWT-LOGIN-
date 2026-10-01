@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.database.connection import departments_collection
 from app.core.rbac import require_role
-from app.schemas.department import DepartmentCreate, DepartmentUpdate
+from app.schemas.department import (
+    DepartmentCreate,
+    DepartmentUpdate
+)
 
 
 router = APIRouter()
@@ -14,8 +17,11 @@ router = APIRouter()
 @router.post("/departments")
 def create_department(
     department: DepartmentCreate,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(
+        require_role("admin")
+    )
 ):
+
     # Check if department already exists
     existing_department = departments_collection.find_one(
         {"name": department.name}
@@ -27,9 +33,13 @@ def create_department(
             detail="Department already exists"
         )
 
+    # Convert Pydantic model to dictionary
     department_data = department.model_dump()
 
-    departments_collection.insert_one(department_data)
+    # Insert department
+    departments_collection.insert_one(
+        department_data
+    )
 
     return {
         "message": "Department created successfully"
@@ -48,6 +58,7 @@ def get_departments(
         )
     )
 ):
+
     departments = list(
         departments_collection.find(
             {},
@@ -63,11 +74,17 @@ def get_departments(
 def update_department(
     department_id: str,
     department: DepartmentUpdate,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(
+        require_role("admin")
+    )
 ):
-    # Check department ID
+
+    # Validate department ID
     try:
-        department_object_id = ObjectId(department_id)
+        department_object_id = ObjectId(
+            department_id
+        )
+
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -86,8 +103,11 @@ def update_department(
         )
 
     # Get only fields provided by the user
-    update_data = department.model_dump(exclude_unset=True)
+    update_data = department.model_dump(
+        exclude_unset=True
+    )
 
+    # Check if at least one field was provided
     if not update_data:
         raise HTTPException(
             status_code=400,
@@ -100,7 +120,9 @@ def update_department(
         duplicate_department = departments_collection.find_one(
             {
                 "name": update_data["name"],
-                "_id": {"$ne": department_object_id}
+                "_id": {
+                    "$ne": department_object_id
+                }
             }
         )
 
@@ -113,21 +135,31 @@ def update_department(
     # Update only provided fields
     departments_collection.update_one(
         {"_id": department_object_id},
-        {"$set": update_data}
+        {
+            "$set": update_data
+        }
     )
 
     return {
         "message": "Department updated successfully"
     }
 
+
 # Delete department
 @router.delete("/departments/{department_id}")
 def delete_department(
     department_id: str,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(
+        require_role("admin")
+    )
 ):
+
+    # Validate department ID
     try:
-        department_object_id = ObjectId(department_id)
+        department_object_id = ObjectId(
+            department_id
+        )
+
     except InvalidId:
         raise HTTPException(
             status_code=400,

@@ -1,58 +1,62 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictStr
 
 
 class PrescriptionCreate(BaseModel):
 
-    patient_id: str = Field(
+    patient_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f123456789abcdef123456"]
     )
 
-    doctor_id: str = Field(
+    doctor_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f987654321abcdef654321"]
     )
 
-    medical_record_id: str = Field(
+    medical_record_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f456789012abcdef456789"]
     )
 
-    medicine_id: str = Field(
+    medicine_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f789012345abcdef789012"]
     )
 
-    dosage: str = Field(
+    dosage: StrictStr = Field(
         ...,
         min_length=1,
         max_length=100,
         examples=["500 mg"]
     )
 
-    frequency: str = Field(
+    frequency: StrictStr = Field(
         ...,
         min_length=1,
         max_length=100,
         examples=["Twice a day"]
     )
 
-    duration: str = Field(
+    duration: StrictStr = Field(
         ...,
         min_length=1,
         max_length=100,
         examples=["5 days"]
     )
 
-    instructions: str = Field(
+    instructions: StrictStr = Field(
         ...,
         min_length=2,
         max_length=300,
@@ -62,49 +66,53 @@ class PrescriptionCreate(BaseModel):
 
 class PrescriptionUpdate(BaseModel):
 
-    patient_id: str | None = Field(
+    patient_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    doctor_id: str | None = Field(
+    doctor_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    medical_record_id: str | None = Field(
+    medical_record_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    medicine_id: str | None = Field(
+    medicine_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    dosage: str | None = Field(
+    dosage: StrictStr | None = Field(
         default=None,
         min_length=1,
         max_length=100
     )
 
-    frequency: str | None = Field(
+    frequency: StrictStr | None = Field(
         default=None,
         min_length=1,
         max_length=100
     )
 
-    duration: str | None = Field(
+    duration: StrictStr | None = Field(
         default=None,
         min_length=1,
         max_length=100
     )
 
-    instructions: str | None = Field(
+    instructions: StrictStr | None = Field(
         default=None,
         min_length=2,
         max_length=300
