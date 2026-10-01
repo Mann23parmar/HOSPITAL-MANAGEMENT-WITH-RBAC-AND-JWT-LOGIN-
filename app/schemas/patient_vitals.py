@@ -1,4 +1,12 @@
-from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
+from pydantic import (
+    BaseModel,
+    Field,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    field_validator
+)
+import re
 
 
 class PatientVitalsCreate(BaseModel):
@@ -21,8 +29,6 @@ class PatientVitalsCreate(BaseModel):
 
     blood_pressure: StrictStr = Field(
         ...,
-        min_length=3,
-        max_length=20,
         examples=["120/80"]
     )
 
@@ -44,6 +50,62 @@ class PatientVitalsCreate(BaseModel):
         examples=[65.5]
     )
 
+    @field_validator("blood_pressure")
+    @classmethod
+    def validate_blood_pressure(cls, value: str):
+
+        if not re.fullmatch(r"\d{2,3}/\d{2,3}", value):
+            raise ValueError(
+                "Blood pressure must be in format like 120/80"
+            )
+
+        systolic, diastolic = map(int, value.split("/"))
+
+        if not 50 <= systolic <= 250:
+            raise ValueError(
+                "Systolic blood pressure must be between 50 and 250"
+            )
+
+        if not 30 <= diastolic <= 150:
+            raise ValueError(
+                "Diastolic blood pressure must be between 30 and 150"
+            )
+
+        return value
+
+    @field_validator("temperature", mode="before")
+    @classmethod
+    def validate_temperature(cls, value):
+
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(
+                "Temperature must be a valid number"
+            )
+
+        return value
+
+    @field_validator("pulse_rate", mode="before")
+    @classmethod
+    def validate_pulse_rate(cls, value):
+
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(
+                "Pulse rate must be a valid integer"
+            )
+
+        return value
+
+    @field_validator("weight", mode="before")
+    @classmethod
+    def validate_weight(cls, value):
+
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(
+                "Weight must be a valid number"
+            )
+
+        return value
+
 
 class PatientVitalsUpdate(BaseModel):
 
@@ -63,8 +125,7 @@ class PatientVitalsUpdate(BaseModel):
 
     blood_pressure: StrictStr | None = Field(
         default=None,
-        min_length=3,
-        max_length=20
+        examples=["120/80"]
     )
 
     temperature: StrictFloat | None = Field(
@@ -81,3 +142,71 @@ class PatientVitalsUpdate(BaseModel):
         default=None,
         gt=0
     )
+
+    @field_validator("blood_pressure")
+    @classmethod
+    def validate_blood_pressure(cls, value: str | None):
+
+        if value is None:
+            return value
+
+        if not re.fullmatch(r"\d{2,3}/\d{2,3}", value):
+            raise ValueError(
+                "Blood pressure must be in format like 120/80"
+            )
+
+        systolic, diastolic = map(int, value.split("/"))
+
+        if not 50 <= systolic <= 250:
+            raise ValueError(
+                "Systolic blood pressure must be between 50 and 250"
+            )
+
+        if not 30 <= diastolic <= 150:
+            raise ValueError(
+                "Diastolic blood pressure must be between 30 and 150"
+            )
+
+        return value
+
+    @field_validator("temperature", mode="before")
+    @classmethod
+    def validate_temperature(cls, value):
+
+        if value is None:
+            return value
+
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(
+                "Temperature must be a valid number"
+            )
+
+        return value
+
+    @field_validator("pulse_rate", mode="before")
+    @classmethod
+    def validate_pulse_rate(cls, value):
+
+        if value is None:
+            return value
+
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(
+                "Pulse rate must be a valid integer"
+            )
+
+        return value
+
+    @field_validator("weight", mode="before")
+    @classmethod
+    def validate_weight(cls, value):
+
+        if value is None:
+            return value
+
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(
+                "Weight must be a valid number"
+            )
+
+        return value
