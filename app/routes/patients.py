@@ -30,19 +30,28 @@ def create_patient(
             detail="Patient with this phone number already exists"
         )
 
+    # Convert Pydantic model to dictionary
     patient_data = patient.model_dump()
 
-    # Store the ID of the logged-in user
-    patient_data["created_by"] = ObjectId(current_user["user_id"])
+    # Convert date object to string before storing in MongoDB
+    patient_data["date_of_birth"] = (
+        patient.date_of_birth.isoformat()
+    )
 
-    patients_collection.insert_one(patient_data)
+    # Store the ID of the logged-in user
+    patient_data["created_by"] = ObjectId(
+        current_user["user_id"]
+    )
+
+    patients_collection.insert_one(
+        patient_data
+    )
 
     return {
         "message": "Patient created successfully"
     }
 
 
-# Get all patients
 # Get all patients
 @router.get("/patients")
 def get_patients(
@@ -72,6 +81,8 @@ def get_patients(
             )
 
     return patients
+
+
 # Update patient
 @router.put("/patients/{patient_id}")
 def update_patient(
@@ -87,7 +98,9 @@ def update_patient(
 
     # Validate patient ID
     try:
-        patient_object_id = ObjectId(patient_id)
+        patient_object_id = ObjectId(
+            patient_id
+        )
 
     except InvalidId:
         raise HTTPException(
@@ -136,6 +149,13 @@ def update_patient(
                 detail="Patient with this phone number already exists"
             )
 
+    # Convert date object to string
+    if "date_of_birth" in update_data:
+
+        update_data["date_of_birth"] = (
+            update_data["date_of_birth"].isoformat()
+        )
+
     # Update only the provided fields
     patients_collection.update_one(
         {"_id": patient_object_id},
@@ -149,7 +169,6 @@ def update_patient(
     }
 
 
-
 # Delete patient
 @router.delete("/patients/{patient_id}")
 def delete_patient(
@@ -161,7 +180,10 @@ def delete_patient(
 
     # Check patient ID
     try:
-        patient_object_id = ObjectId(patient_id)
+        patient_object_id = ObjectId(
+            patient_id
+        )
+
     except InvalidId:
         raise HTTPException(
             status_code=400,
