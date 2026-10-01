@@ -44,18 +44,6 @@ def create_user(
     return {
         "message": "User created successfully"
     }
-
-
-# # Admin can see total number of users
-# @router.get("/users/count")
-# def get_user_count(
-#     current_user: dict = Depends(
-#         require_role("admin")
-#     )
-# ):
-
-#     count = users_collection.count_documents({})
-
-#     return {
-#         "total_users": count
-#     }   
+    
+    
+    

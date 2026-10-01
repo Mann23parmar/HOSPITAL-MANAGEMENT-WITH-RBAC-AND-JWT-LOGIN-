@@ -1,44 +1,47 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictStr
 
 
 class MedicalRecordCreate(BaseModel):
 
-    patient_id: str = Field(
+    patient_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f123456789abcdef123456"]
     )
 
-    doctor_id: str = Field(
+    doctor_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f987654321abcdef654321"]
     )
 
-    appointment_id: str = Field(
+    appointment_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f456789012abcdef456789"]
     )
 
-    diagnosis: str = Field(
+    diagnosis: StrictStr = Field(
         ...,
         min_length=2,
         max_length=300,
         examples=["Mild hypertension"]
     )
 
-    treatment: str = Field(
+    treatment: StrictStr = Field(
         ...,
         min_length=2,
         max_length=500,
         examples=["Medication and regular blood pressure monitoring"]
     )
 
-    notes: str = Field(
+    notes: StrictStr = Field(
         ...,
         min_length=2,
         max_length=500,
@@ -48,37 +51,40 @@ class MedicalRecordCreate(BaseModel):
 
 class MedicalRecordUpdate(BaseModel):
 
-    patient_id: str | None = Field(
+    patient_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    doctor_id: str | None = Field(
+    doctor_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    appointment_id: str | None = Field(
+    appointment_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    diagnosis: str | None = Field(
+    diagnosis: StrictStr | None = Field(
         default=None,
         min_length=2,
         max_length=300
     )
 
-    treatment: str | None = Field(
+    treatment: StrictStr | None = Field(
         default=None,
         min_length=2,
         max_length=500
     )
 
-    notes: str | None = Field(
+    notes: StrictStr | None = Field(
         default=None,
         min_length=2,
         max_length=500

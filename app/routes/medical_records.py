@@ -28,7 +28,7 @@ def create_medical_record(
     )
 ):
 
-    # Check patient ID
+    # Convert patient ID
     try:
         patient_object_id = ObjectId(record.patient_id)
     except InvalidId:
@@ -48,7 +48,7 @@ def create_medical_record(
             detail="Patient not found"
         )
 
-    # Check doctor ID
+    # Convert doctor ID
     try:
         doctor_object_id = ObjectId(record.doctor_id)
     except InvalidId:
@@ -68,7 +68,7 @@ def create_medical_record(
             detail="Doctor not found"
         )
 
-    # Check appointment ID
+    # Convert appointment ID
     try:
         appointment_object_id = ObjectId(
             record.appointment_id
@@ -124,7 +124,6 @@ def create_medical_record(
 
 
 # Get all medical records
-# Get all medical records
 @router.get("/medical-records")
 def get_medical_records(
     current_user: dict = Depends(
@@ -137,36 +136,62 @@ def get_medical_records(
 ):
 
     records = list(
-        medical_records_collection.find(
-            {},
-            {"_id": 0}
-        )
+        medical_records_collection.aggregate([
+            {
+                "$lookup": {
+                    "from": "patients",
+                    "localField": "patient_id",
+                    "foreignField": "_id",
+                    "as": "patient"
+                }
+            },
+            {
+                "$lookup": {
+                    "from": "doctors",
+                    "localField": "doctor_id",
+                    "foreignField": "_id",
+                    "as": "doctor"
+                }
+            },
+            {
+                "$unwind": {
+                    "path": "$patient",
+                    "preserveNullAndEmptyArrays": True
+                }
+            },
+            {
+                "$unwind": {
+                    "path": "$doctor",
+                    "preserveNullAndEmptyArrays": True
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "patient_id": 1,
+                    "doctor_id": 1,
+                    "appointment_id": 1,
+                    "diagnosis": 1,
+                    "treatment": 1,
+                    "notes": 1,
+                    "patient_name": "$patient.name",
+                    "doctor_name": "$doctor.name"
+                }
+            }
+        ])
     )
 
+    # Convert ObjectIds to strings
     for record in records:
 
         if "patient_id" in record:
-            patient_id = str(record["patient_id"])
-            record["patient_id"] = patient_id
-
-            patient = patients_collection.find_one(
-                {"_id": ObjectId(patient_id)}
-            )
-
-            record["patient_name"] = (
-                patient["name"] if patient else "Unknown"
+            record["patient_id"] = str(
+                record["patient_id"]
             )
 
         if "doctor_id" in record:
-            doctor_id = str(record["doctor_id"])
-            record["doctor_id"] = doctor_id
-
-            doctor = doctors_collection.find_one(
-                {"_id": ObjectId(doctor_id)}
-            )
-
-            record["doctor_name"] = (
-                doctor["name"] if doctor else "Unknown"
+            record["doctor_id"] = str(
+                record["doctor_id"]
             )
 
         if "appointment_id" in record:
@@ -175,6 +200,7 @@ def get_medical_records(
             )
 
     return records
+
 
 # Update medical record
 @router.put("/medical-records/{record_id}")
@@ -186,7 +212,7 @@ def update_medical_record(
     )
 ):
 
-    # Check medical record ID
+    # Convert medical record ID
     try:
         record_object_id = ObjectId(record_id)
     except InvalidId:
@@ -207,7 +233,9 @@ def update_medical_record(
         )
 
     # Get only fields provided by the user
-    update_data = record.model_dump(exclude_unset=True)
+    update_data = record.model_dump(
+        exclude_unset=True
+    )
 
     if not update_data:
         raise HTTPException(
@@ -215,8 +243,7 @@ def update_medical_record(
             detail="At least one field is required for update"
         )
 
-    # Use new patient_id if provided,
-    # otherwise use existing patient_id
+    # Patient
     if "patient_id" in update_data:
 
         try:
@@ -244,8 +271,7 @@ def update_medical_record(
     else:
         patient_object_id = existing_record["patient_id"]
 
-    # Use new doctor_id if provided,
-    # otherwise use existing doctor_id
+    # Doctor
     if "doctor_id" in update_data:
 
         try:
@@ -273,8 +299,7 @@ def update_medical_record(
     else:
         doctor_object_id = existing_record["doctor_id"]
 
-    # Use new appointment_id if provided,
-    # otherwise use existing appointment_id
+    # Appointment
     if "appointment_id" in update_data:
 
         try:
@@ -300,7 +325,10 @@ def update_medical_record(
         update_data["appointment_id"] = appointment_object_id
 
     else:
-        appointment_object_id = existing_record["appointment_id"]
+
+        appointment_object_id = existing_record[
+            "appointment_id"
+        ]
 
         appointment = appointments_collection.find_one(
             {"_id": appointment_object_id}
@@ -346,7 +374,7 @@ def delete_medical_record(
     )
 ):
 
-    # Check medical record ID
+    # Convert medical record ID
     try:
         record_object_id = ObjectId(record_id)
     except InvalidId:
@@ -368,5 +396,3 @@ def delete_medical_record(
     return {
         "message": "Medical record deleted successfully"
     }
-    
-    

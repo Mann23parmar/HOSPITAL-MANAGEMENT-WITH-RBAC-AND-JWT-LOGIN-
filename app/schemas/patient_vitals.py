@@ -1,23 +1,25 @@
-from pydantic import BaseModel, Field, StrictFloat, StrictInt
+from pydantic import BaseModel, Field, StrictFloat, StrictInt, StrictStr
 
 
 class PatientVitalsCreate(BaseModel):
 
-    patient_id: str = Field(
+    patient_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f123456789abcdef123456"]
     )
 
-    nurse_id: str = Field(
+    nurse_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f987654321abcdef654321"]
     )
 
-    blood_pressure: str = Field(
+    blood_pressure: StrictStr = Field(
         ...,
         min_length=3,
         max_length=20,
@@ -45,19 +47,21 @@ class PatientVitalsCreate(BaseModel):
 
 class PatientVitalsUpdate(BaseModel):
 
-    patient_id: str | None = Field(
+    patient_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    nurse_id: str | None = Field(
+    nurse_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    blood_pressure: str | None = Field(
+    blood_pressure: StrictStr | None = Field(
         default=None,
         min_length=3,
         max_length=20

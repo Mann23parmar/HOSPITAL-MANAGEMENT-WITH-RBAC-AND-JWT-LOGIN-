@@ -16,7 +16,6 @@ def create_medicine(
     medicine: MedicineCreate,
     current_user: dict = Depends(require_role("admin"))
 ):
-
     # Check duplicate medicine
     existing_medicine = medicines_collection.find_one(
         {
@@ -32,6 +31,9 @@ def create_medicine(
         )
 
     medicine_data = medicine.model_dump()
+
+    # Convert date to string before storing in MongoDB
+    medicine_data["expiry_date"] = medicine.expiry_date.isoformat()
 
     medicines_collection.insert_one(medicine_data)
 
@@ -52,7 +54,6 @@ def get_medicines(
         )
     )
 ):
-
     medicines = list(
         medicines_collection.find(
             {},
@@ -70,7 +71,6 @@ def update_medicine(
     medicine: MedicineUpdate,
     current_user: dict = Depends(require_role("admin"))
 ):
-
     # Check medicine ID
     try:
         medicine_object_id = ObjectId(medicine_id)
@@ -100,7 +100,7 @@ def update_medicine(
             detail="At least one field is required for update"
         )
 
-    # Check duplicate medicine only when
+    # Check duplicate medicine when
     # name or manufacturer is being updated
     if "name" in update_data or "manufacturer" in update_data:
 
@@ -128,6 +128,10 @@ def update_medicine(
                 detail="Another medicine with this name and manufacturer already exists"
             )
 
+    # Convert date to string before MongoDB update
+    if "expiry_date" in update_data:
+        update_data["expiry_date"] = update_data["expiry_date"].isoformat()
+
     # Update only provided fields
     medicines_collection.update_one(
         {"_id": medicine_object_id},
@@ -145,7 +149,6 @@ def delete_medicine(
     medicine_id: str,
     current_user: dict = Depends(require_role("admin"))
 ):
-
     # Check medicine ID
     try:
         medicine_object_id = ObjectId(medicine_id)

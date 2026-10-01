@@ -30,7 +30,9 @@ def create_patient_vitals(
 
     # Validate patient ID
     try:
-        patient_object_id = ObjectId(vitals.patient_id)
+        patient_object_id = ObjectId(
+            vitals.patient_id
+        )
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -38,9 +40,9 @@ def create_patient_vitals(
         )
 
     # Check patient exists
-    patient = patients_collection.find_one(
-        {"_id": patient_object_id}
-    )
+    patient = patients_collection.find_one({
+        "_id": patient_object_id
+    })
 
     if not patient:
         raise HTTPException(
@@ -50,7 +52,9 @@ def create_patient_vitals(
 
     # Validate nurse ID
     try:
-        nurse_object_id = ObjectId(vitals.nurse_id)
+        nurse_object_id = ObjectId(
+            vitals.nurse_id
+        )
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -58,9 +62,9 @@ def create_patient_vitals(
         )
 
     # Check nurse exists
-    nurse = nurses_collection.find_one(
-        {"_id": nurse_object_id}
-    )
+    nurse = nurses_collection.find_one({
+        "_id": nurse_object_id
+    })
 
     if not nurse:
         raise HTTPException(
@@ -69,9 +73,9 @@ def create_patient_vitals(
         )
 
     # Check linked user exists
-    nurse_user = users_collection.find_one(
-        {"_id": nurse["user_id"]}
-    )
+    nurse_user = users_collection.find_one({
+        "_id": nurse["user_id"]
+    })
 
     if not nurse_user:
         raise HTTPException(
@@ -117,31 +121,69 @@ def get_patient_vitals(
         )
     )
 ):
+
     vitals = list(
-        patient_vitals_collection.find(
-            {},
-            {"_id": 0}
-        )
+        patient_vitals_collection.aggregate([
+            {
+                "$lookup": {
+                    "from": "patients",
+                    "localField": "patient_id",
+                    "foreignField": "_id",
+                    "as": "patient"
+                }
+            },
+            {
+                "$lookup": {
+                    "from": "nurses",
+                    "localField": "nurse_id",
+                    "foreignField": "_id",
+                    "as": "nurse"
+                }
+            },
+            {
+                "$unwind": {
+                    "path": "$patient",
+                    "preserveNullAndEmptyArrays": True
+                }
+            },
+            {
+                "$unwind": {
+                    "path": "$nurse",
+                    "preserveNullAndEmptyArrays": True
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "patient_id": 1,
+                    "nurse_id": 1,
+                    "blood_pressure": 1,
+                    "temperature": 1,
+                    "pulse_rate": 1,
+                    "weight": 1,
+                    "patient_name": "$patient.name",
+                    "nurse_name": "$nurse.name"
+                }
+            }
+        ])
     )
 
+    # Convert ObjectIds to strings
     for vital in vitals:
 
-        # Convert ObjectId to string
-        vital["patient_id"] = str(vital["patient_id"])
-        vital["nurse_id"] = str(vital["nurse_id"])
+        if "patient_id" in vital:
+            vital["patient_id"] = str(
+                vital["patient_id"]
+            )
 
-        # Find patient using patient_id
-        patient = patients_collection.find_one(
-            {"_id": ObjectId(vital["patient_id"])}
-        )
-
-        # Add patient name
-        if patient:
-            vital["patient_name"] = patient["name"]
-        else:
-            vital["patient_name"] = "Unknown"
+        if "nurse_id" in vital:
+            vital["nurse_id"] = str(
+                vital["nurse_id"]
+            )
 
     return vitals
+
+
 # Update patient vitals
 @router.put("/patient-vitals/{vitals_id}")
 def update_patient_vitals(
@@ -162,9 +204,9 @@ def update_patient_vitals(
         )
 
     # Check vitals exist
-    existing_vitals = patient_vitals_collection.find_one(
-        {"_id": vitals_object_id}
-    )
+    existing_vitals = patient_vitals_collection.find_one({
+        "_id": vitals_object_id
+    })
 
     if not existing_vitals:
         raise HTTPException(
@@ -177,14 +219,14 @@ def update_patient_vitals(
         exclude_unset=True
     )
 
-    # Check if at least one field was provided
+    # Prevent empty update
     if not update_data:
         raise HTTPException(
             status_code=400,
             detail="At least one field is required for update"
         )
 
-    # Validate patient ID only if provided
+    # Validate patient ID if provided
     if "patient_id" in update_data:
 
         try:
@@ -197,9 +239,9 @@ def update_patient_vitals(
                 detail="Invalid patient ID"
             )
 
-        patient = patients_collection.find_one(
-            {"_id": patient_object_id}
-        )
+        patient = patients_collection.find_one({
+            "_id": patient_object_id
+        })
 
         if not patient:
             raise HTTPException(
@@ -209,7 +251,7 @@ def update_patient_vitals(
 
         update_data["patient_id"] = patient_object_id
 
-    # Validate nurse ID only if provided
+    # Validate nurse ID if provided
     if "nurse_id" in update_data:
 
         try:
@@ -222,9 +264,9 @@ def update_patient_vitals(
                 detail="Invalid nurse ID"
             )
 
-        nurse = nurses_collection.find_one(
-            {"_id": nurse_object_id}
-        )
+        nurse = nurses_collection.find_one({
+            "_id": nurse_object_id
+        })
 
         if not nurse:
             raise HTTPException(
@@ -233,9 +275,9 @@ def update_patient_vitals(
             )
 
         # Check linked nurse user exists
-        nurse_user = users_collection.find_one(
-            {"_id": nurse["user_id"]}
-        )
+        nurse_user = users_collection.find_one({
+            "_id": nurse["user_id"]
+        })
 
         if not nurse_user:
             raise HTTPException(
@@ -255,9 +297,7 @@ def update_patient_vitals(
     # Update only provided fields
     patient_vitals_collection.update_one(
         {"_id": vitals_object_id},
-        {
-            "$set": update_data
-        }
+        {"$set": update_data}
     )
 
     return {
@@ -284,9 +324,9 @@ def delete_patient_vitals(
         )
 
     # Delete vitals
-    result = patient_vitals_collection.delete_one(
-        {"_id": vitals_object_id}
-    )
+    result = patient_vitals_collection.delete_one({
+        "_id": vitals_object_id
+    })
 
     if result.deleted_count == 0:
         raise HTTPException(
