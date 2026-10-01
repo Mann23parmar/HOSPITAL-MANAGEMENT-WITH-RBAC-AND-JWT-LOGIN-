@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from datetime import date, time
 
 class AppointmentCreate(BaseModel):
 
@@ -17,12 +17,12 @@ class AppointmentCreate(BaseModel):
         examples=["66f987654321abcdef654321"]
     )
 
-    appointment_date: str = Field(
+    appointment_date: date = Field(
         ...,
         examples=["2026-10-01"]
     )
 
-    appointment_time: str = Field(
+    appointment_time: time = Field(
         ...,
         examples=["10:30"]
     )
@@ -49,9 +49,9 @@ class AppointmentUpdate(BaseModel):
         max_length=24
     )
 
-    appointment_date: str | None = None
+    appointment_date: date | None = None
 
-    appointment_time: str | None = None
+    appointment_time: time | None = None
 
     reason: str | None = Field(
         default=None,
@@ -63,3 +63,4 @@ class AppointmentUpdate(BaseModel):
         default=None,
         examples=["scheduled"]
     )
+    
