@@ -1,9 +1,10 @@
-1.fastapi
-2.uvicorn
-3.pymongo
-4.python-dotenv
-5.passlib[bcrypt]
-6.python-jose (for jwt)
-
+fastapi
+uvicorn
+pymongo
+python-dotenv
+passlib[bcrypt]
+python-jose
+python-dotenv
+pydantic-settings
 
      
