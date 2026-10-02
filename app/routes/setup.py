@@ -31,7 +31,7 @@ def create_initial_admin(admin: InitialAdminCreate):
         "email": admin.email,
         "password": hashed_password,
         "role": "admin",
-        "is_active": True,
+        "is_active": False,
         "created_at": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
     }
 
@@ -40,3 +40,6 @@ def create_initial_admin(admin: InitialAdminCreate):
     return {
         "message": "Initial admin created successfully"
     }
+    
+    
+    

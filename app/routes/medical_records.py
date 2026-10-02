@@ -1,7 +1,7 @@
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
-
+from app.core.authorization import get_current_doctor
 from app.database.connection import (
     medical_records_collection,
     patients_collection,
@@ -112,32 +112,13 @@ def create_medical_record(
     # make sure it is their own doctor profile
     if current_user["role"] == "doctor":
 
-        try:
-            user_object_id = ObjectId(
-                current_user["user_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid user ID"
-            )
-
-        current_doctor = doctors_collection.find_one(
-            {"user_id": user_object_id}
-        )
-
-        if not current_doctor:
-            raise HTTPException(
-                status_code=404,
-                detail="Doctor profile not found"
-            )
+        current_doctor = get_current_doctor(current_user)
 
         if doctor_object_id != current_doctor["_id"]:
             raise HTTPException(
                 status_code=403,
                 detail="Doctor cannot create a medical record for another doctor"
-            )
-
+        )
     # Create medical record
     record_data = {
         "patient_id": patient_object_id,
@@ -175,31 +156,11 @@ def get_medical_records(
     # Doctor: get only own medical records
     if current_user["role"] == "doctor":
 
-        try:
-            user_object_id = ObjectId(
-                current_user["user_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid user ID"
-            )
+        current_doctor = get_current_doctor(current_user)
 
-        # Find logged-in doctor's profile
-        doctor = doctors_collection.find_one(
-            {"user_id": user_object_id}
-        )
-
-        if not doctor:
-            raise HTTPException(
-                status_code=404,
-                detail="Doctor profile not found"
-            )
-
-        # Filter records by doctor's ID
         query = {
-            "doctor_id": doctor["_id"]
-        }
+        "doctor_id": current_doctor["_id"]
+    }
 
     records = list(
         medical_records_collection.aggregate([
@@ -308,32 +269,13 @@ def update_medical_record(
 
     if current_user["role"] == "doctor":
 
-        try:
-            user_object_id = ObjectId(
-                current_user["user_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid user ID"
-            )
-
-        current_doctor = doctors_collection.find_one(
-            {"user_id": user_object_id}
-        )
-
-        if not current_doctor:
-            raise HTTPException(
-                status_code=404,
-                detail="Doctor profile not found"
-            )
+        current_doctor = get_current_doctor(current_user)
 
         if existing_record["doctor_id"] != current_doctor["_id"]:
             raise HTTPException(
                 status_code=403,
                 detail="You do not have permission to update this medical record"
-            )
-
+        )
     # Get only fields provided by the user
     update_data = record.model_dump(
         exclude_unset=True

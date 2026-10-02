@@ -30,7 +30,11 @@ def login(user: UserLogin):
             status_code=401,
             detail="Invalid email or password"
         )
-
+    if not stored_user.get("is_active", True):
+        raise HTTPException(
+        status_code=403,
+        detail="User account is inactive"
+    )
     access_token = create_access_token({
         "sub": stored_user["email"],
         "role": stored_user["role"]
