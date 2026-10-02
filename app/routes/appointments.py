@@ -14,8 +14,32 @@ from app.schemas.appointment import (
     AppointmentUpdate
 )
 
-
 router = APIRouter()
+
+
+# Get current doctor's profile
+def get_current_doctor(current_user: dict):
+    try:
+        user_object_id = ObjectId(
+            current_user["user_id"]
+        )
+    except InvalidId:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid user ID"
+        )
+
+    doctor = doctors_collection.find_one(
+        {"user_id": user_object_id}
+    )
+
+    if not doctor:
+        raise HTTPException(
+            status_code=404,
+            detail="Doctor profile not found"
+        )
+
+    return doctor
 
 
 # Create appointment
@@ -26,7 +50,6 @@ def create_appointment(
         require_role("admin", "receptionist")
     )
 ):
-
     # Check patient ID
     try:
         patient_object_id = ObjectId(
@@ -93,7 +116,7 @@ def create_appointment(
     }
 
 
-# Get all appointments
+# Get appointments
 @router.get("/appointments")
 def get_appointments(
     current_user: dict = Depends(
@@ -105,10 +128,22 @@ def get_appointments(
         )
     )
 ):
+    # Default: show all appointments
+    query = {}
+
+    # Doctor: show only own appointments
+    if current_user["role"] == "doctor":
+        current_doctor = get_current_doctor(
+            current_user
+        )
+
+        query = {
+            "doctor_id": current_doctor["_id"]
+        }
 
     appointments = list(
         appointments_collection.find(
-            {},
+            query,
             {"_id": 0}
         )
     )
@@ -117,7 +152,6 @@ def get_appointments(
 
         # Patient
         if "patient_id" in appointment:
-
             patient_id = str(
                 appointment["patient_id"]
             )
@@ -136,7 +170,6 @@ def get_appointments(
 
         # Doctor
         if "doctor_id" in appointment:
-
             doctor_id = str(
                 appointment["doctor_id"]
             )
@@ -155,7 +188,6 @@ def get_appointments(
 
         # Created by
         if "created_by" in appointment:
-
             appointment["created_by"] = str(
                 appointment["created_by"]
             )
@@ -176,7 +208,6 @@ def update_appointment(
         )
     )
 ):
-
     # Check appointment ID
     try:
         appointment_object_id = ObjectId(
@@ -198,6 +229,20 @@ def update_appointment(
             status_code=404,
             detail="Appointment not found"
         )
+
+    # Doctor can update only own appointment
+    current_doctor = None
+
+    if current_user["role"] == "doctor":
+        current_doctor = get_current_doctor(
+            current_user
+        )
+
+        if existing_appointment["doctor_id"] != current_doctor["_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to update this appointment"
+            )
 
     # Get only fields provided by user
     update_data = appointment.model_dump(
@@ -236,12 +281,6 @@ def update_appointment(
 
         update_data["patient_id"] = patient_object_id
 
-    else:
-
-        patient_object_id = existing_appointment[
-            "patient_id"
-        ]
-
     # Effective doctor ID
     if "doctor_id" in update_data:
 
@@ -265,13 +304,18 @@ def update_appointment(
                 detail="Doctor not found"
             )
 
+        # Doctor cannot change appointment
+        # to another doctor
+        if (
+            current_user["role"] == "doctor"
+            and doctor_object_id != current_doctor["_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor cannot assign this appointment to another doctor"
+            )
+
         update_data["doctor_id"] = doctor_object_id
-
-    else:
-
-        doctor_object_id = existing_appointment[
-            "doctor_id"
-        ]
 
     # Validate appointment status
     if "status" in update_data:
@@ -290,14 +334,12 @@ def update_appointment(
 
     # Convert date to string
     if "appointment_date" in update_data:
-
         update_data["appointment_date"] = (
             update_data["appointment_date"].isoformat()
         )
 
     # Convert time to string
     if "appointment_time" in update_data:
-
         update_data["appointment_time"] = (
             update_data["appointment_time"].isoformat()
         )
@@ -305,9 +347,7 @@ def update_appointment(
     # Update appointment
     appointments_collection.update_one(
         {"_id": appointment_object_id},
-        {
-            "$set": update_data
-        }
+        {"$set": update_data}
     )
 
     return {
@@ -323,7 +363,6 @@ def delete_appointment(
         require_role("admin")
     )
 ):
-
     # Check appointment ID
     try:
         appointment_object_id = ObjectId(

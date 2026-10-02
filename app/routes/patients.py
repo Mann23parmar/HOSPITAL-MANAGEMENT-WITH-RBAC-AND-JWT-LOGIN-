@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.database.connection import patients_collection
 from app.core.rbac import require_role
 from app.schemas.patient import PatientCreate, PatientUpdate
-
+from app.database.connection import (
+    patients_collection,
+    appointments_collection,
+    doctors_collection
+)
 
 router = APIRouter()
 
@@ -53,6 +57,7 @@ def create_patient(
 
 
 # Get all patients
+# Get patients
 @router.get("/patients")
 def get_patients(
     current_user: dict = Depends(
@@ -65,9 +70,60 @@ def get_patients(
     )
 ):
 
+    # Default: get all patients
+    query = {}
+
+    # Doctor: get only patients related
+    # to the doctor's appointments
+    if current_user["role"] == "doctor":
+
+        # Find logged-in doctor's profile
+        try:
+            user_object_id = ObjectId(
+                current_user["user_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID"
+            )
+
+        doctor = doctors_collection.find_one(
+            {"user_id": user_object_id}
+        )
+
+        if not doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Doctor profile not found"
+            )
+
+        # Find appointments assigned to this doctor
+        appointments = appointments_collection.find(
+            {
+                "doctor_id": doctor["_id"]
+            },
+            {
+                "patient_id": 1
+            }
+        )
+
+        patient_ids = [
+            appointment["patient_id"]
+            for appointment in appointments
+            if "patient_id" in appointment
+        ]
+
+        # Get only related patients
+        query = {
+            "_id": {
+                "$in": patient_ids
+            }
+        }
+
     patients = list(
         patients_collection.find(
-            {},
+            query,
             {"_id": 0}
         )
     )
@@ -81,8 +137,6 @@ def get_patients(
             )
 
     return patients
-
-
 # Update patient
 @router.put("/patients/{patient_id}")
 def update_patient(

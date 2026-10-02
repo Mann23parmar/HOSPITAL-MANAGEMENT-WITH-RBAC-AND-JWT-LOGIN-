@@ -30,7 +30,9 @@ def create_medical_record(
 
     # Convert patient ID
     try:
-        patient_object_id = ObjectId(record.patient_id)
+        patient_object_id = ObjectId(
+            record.patient_id
+        )
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -50,7 +52,9 @@ def create_medical_record(
 
     # Convert doctor ID
     try:
-        doctor_object_id = ObjectId(record.doctor_id)
+        doctor_object_id = ObjectId(
+            record.doctor_id
+        )
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -104,6 +108,36 @@ def create_medical_record(
             detail="Appointment does not belong to this doctor"
         )
 
+    # If doctor is creating the record,
+    # make sure it is their own doctor profile
+    if current_user["role"] == "doctor":
+
+        try:
+            user_object_id = ObjectId(
+                current_user["user_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID"
+            )
+
+        current_doctor = doctors_collection.find_one(
+            {"user_id": user_object_id}
+        )
+
+        if not current_doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Doctor profile not found"
+            )
+
+        if doctor_object_id != current_doctor["_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor cannot create a medical record for another doctor"
+            )
+
     # Create medical record
     record_data = {
         "patient_id": patient_object_id,
@@ -123,7 +157,7 @@ def create_medical_record(
     }
 
 
-# Get all medical records
+# Get medical records
 @router.get("/medical-records")
 def get_medical_records(
     current_user: dict = Depends(
@@ -135,8 +169,43 @@ def get_medical_records(
     )
 ):
 
+    # Default: get all medical records
+    query = {}
+
+    # Doctor: get only own medical records
+    if current_user["role"] == "doctor":
+
+        try:
+            user_object_id = ObjectId(
+                current_user["user_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID"
+            )
+
+        # Find logged-in doctor's profile
+        doctor = doctors_collection.find_one(
+            {"user_id": user_object_id}
+        )
+
+        if not doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Doctor profile not found"
+            )
+
+        # Filter records by doctor's ID
+        query = {
+            "doctor_id": doctor["_id"]
+        }
+
     records = list(
         medical_records_collection.aggregate([
+            {
+                "$match": query
+            },
             {
                 "$lookup": {
                     "from": "patients",
@@ -214,7 +283,9 @@ def update_medical_record(
 
     # Convert medical record ID
     try:
-        record_object_id = ObjectId(record_id)
+        record_object_id = ObjectId(
+            record_id
+        )
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -232,11 +303,43 @@ def update_medical_record(
             detail="Medical record not found"
         )
 
+    # Doctor can update only own medical records
+    current_doctor = None
+
+    if current_user["role"] == "doctor":
+
+        try:
+            user_object_id = ObjectId(
+                current_user["user_id"]
+            )
+        except InvalidId:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid user ID"
+            )
+
+        current_doctor = doctors_collection.find_one(
+            {"user_id": user_object_id}
+        )
+
+        if not current_doctor:
+            raise HTTPException(
+                status_code=404,
+                detail="Doctor profile not found"
+            )
+
+        if existing_record["doctor_id"] != current_doctor["_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to update this medical record"
+            )
+
     # Get only fields provided by the user
     update_data = record.model_dump(
         exclude_unset=True
     )
 
+    # Check empty update
     if not update_data:
         raise HTTPException(
             status_code=400,
@@ -292,6 +395,16 @@ def update_medical_record(
             raise HTTPException(
                 status_code=404,
                 detail="Doctor not found"
+            )
+
+        # Doctor cannot assign record to another doctor
+        if (
+            current_user["role"] == "doctor"
+            and doctor_object_id != current_doctor["_id"]
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor cannot assign the medical record to another doctor"
             )
 
         update_data["doctor_id"] = doctor_object_id
@@ -376,7 +489,9 @@ def delete_medical_record(
 
     # Convert medical record ID
     try:
-        record_object_id = ObjectId(record_id)
+        record_object_id = ObjectId(
+            record_id
+        )
     except InvalidId:
         raise HTTPException(
             status_code=400,
