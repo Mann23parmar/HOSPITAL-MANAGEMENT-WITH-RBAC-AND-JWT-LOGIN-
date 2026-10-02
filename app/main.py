@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.database.connection import client
-
+from app.routes.setup import router as setup_router
 from app.routes.auth import router as auth_router
 from app.routes.users import router as users_router
 from app.routes.departments import router as departments_router
@@ -71,3 +71,5 @@ app.include_router(prescriptions_router)
 
 # Patient Vitals
 app.include_router(patient_vitals_router)
+
+app.include_router(setup_router)
