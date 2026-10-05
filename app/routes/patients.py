@@ -2,10 +2,11 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.authorization import get_current_doctor
+
 from app.database.connection import (
     patients_collection,
-    appointments_collection,
-    doctors_collection
+    appointments_collection
 )
 
 from app.core.rbac import require_role
@@ -99,27 +100,10 @@ def get_patients(
     # to the doctor's appointments
     if current_user["role"] == "doctor":
 
-        # Find logged-in doctor's profile
-        try:
-            user_object_id = ObjectId(
-                current_user["user_id"]
-            )
-
-        except InvalidId:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid user ID"
-            )
-
-        doctor = doctors_collection.find_one(
-            {"user_id": user_object_id}
+        # Get logged-in doctor's profile
+        doctor = get_current_doctor(
+            current_user
         )
-
-        if not doctor:
-            raise HTTPException(
-                status_code=404,
-                detail="Doctor profile not found"
-            )
 
         # Find appointments assigned to this doctor
         appointments = appointments_collection.find(
