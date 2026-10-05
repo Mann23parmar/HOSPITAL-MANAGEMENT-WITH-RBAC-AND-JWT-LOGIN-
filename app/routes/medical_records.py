@@ -1,6 +1,7 @@
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
+
 from app.core.authorization import get_current_doctor
 from app.database.connection import (
     medical_records_collection,
@@ -8,7 +9,6 @@ from app.database.connection import (
     doctors_collection,
     appointments_collection
 )
-
 from app.core.rbac import require_role
 from app.schemas.medical_record import (
     MedicalRecordCreate,
@@ -19,27 +19,19 @@ from app.schemas.medical_record import (
 router = APIRouter()
 
 
-# Create medical record
-@router.post("/medical-records")
-def create_medical_record(
-    record: MedicalRecordCreate,
-    current_user: dict = Depends(
-        require_role("admin", "doctor")
-    )
-):
+# =========================================================
+# Reusable validation functions
+# =========================================================
 
-    # Convert patient ID
+def get_patient_object_id(patient_id: str):
     try:
-        patient_object_id = ObjectId(
-            record.patient_id
-        )
+        patient_object_id = ObjectId(patient_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid patient ID"
         )
 
-    # Check patient exists
     patient = patients_collection.find_one(
         {"_id": patient_object_id}
     )
@@ -50,18 +42,18 @@ def create_medical_record(
             detail="Patient not found"
         )
 
-    # Convert doctor ID
+    return patient_object_id
+
+
+def get_doctor_object_id(doctor_id: str):
     try:
-        doctor_object_id = ObjectId(
-            record.doctor_id
-        )
+        doctor_object_id = ObjectId(doctor_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid doctor ID"
         )
 
-    # Check doctor exists
     doctor = doctors_collection.find_one(
         {"_id": doctor_object_id}
     )
@@ -72,18 +64,18 @@ def create_medical_record(
             detail="Doctor not found"
         )
 
-    # Convert appointment ID
+    return doctor_object_id
+
+
+def get_appointment_object_id(appointment_id: str):
     try:
-        appointment_object_id = ObjectId(
-            record.appointment_id
-        )
+        appointment_object_id = ObjectId(appointment_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid appointment ID"
         )
 
-    # Check appointment exists
     appointment = appointments_collection.find_one(
         {"_id": appointment_object_id}
     )
@@ -93,6 +85,40 @@ def create_medical_record(
             status_code=404,
             detail="Appointment not found"
         )
+
+    return appointment_object_id
+
+
+# =========================================================
+# Create medical record
+# =========================================================
+
+@router.post("/medical-records")
+def create_medical_record(
+    record: MedicalRecordCreate,
+    current_user: dict = Depends(
+        require_role("admin", "doctor")
+    )
+):
+
+    # Validate patient
+    patient_object_id = get_patient_object_id(
+        record.patient_id
+    )
+
+    # Validate doctor
+    doctor_object_id = get_doctor_object_id(
+        record.doctor_id
+    )
+
+    # Validate appointment
+    appointment_object_id = get_appointment_object_id(
+        record.appointment_id
+    )
+
+    appointment = appointments_collection.find_one(
+        {"_id": appointment_object_id}
+    )
 
     # Check appointment belongs to patient
     if appointment["patient_id"] != patient_object_id:
@@ -118,7 +144,8 @@ def create_medical_record(
             raise HTTPException(
                 status_code=403,
                 detail="Doctor cannot create a medical record for another doctor"
-        )
+            )
+
     # Create medical record
     record_data = {
         "patient_id": patient_object_id,
@@ -138,7 +165,10 @@ def create_medical_record(
     }
 
 
+# =========================================================
 # Get medical records
+# =========================================================
+
 @router.get("/medical-records")
 def get_medical_records(
     current_user: dict = Depends(
@@ -159,8 +189,8 @@ def get_medical_records(
         current_doctor = get_current_doctor(current_user)
 
         query = {
-        "doctor_id": current_doctor["_id"]
-    }
+            "doctor_id": current_doctor["_id"]
+        }
 
     records = list(
         medical_records_collection.aggregate([
@@ -232,7 +262,10 @@ def get_medical_records(
     return records
 
 
+# =========================================================
 # Update medical record
+# =========================================================
+
 @router.put("/medical-records/{record_id}")
 def update_medical_record(
     record_id: str,
@@ -244,9 +277,7 @@ def update_medical_record(
 
     # Convert medical record ID
     try:
-        record_object_id = ObjectId(
-            record_id
-        )
+        record_object_id = ObjectId(record_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -275,7 +306,8 @@ def update_medical_record(
             raise HTTPException(
                 status_code=403,
                 detail="You do not have permission to update this medical record"
-        )
+            )
+
     # Get only fields provided by the user
     update_data = record.model_dump(
         exclude_unset=True
@@ -288,56 +320,31 @@ def update_medical_record(
             detail="At least one field is required for update"
         )
 
+    # =====================================================
     # Patient
+    # =====================================================
+
     if "patient_id" in update_data:
 
-        try:
-            patient_object_id = ObjectId(
-                update_data["patient_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid patient ID"
-            )
-
-        patient = patients_collection.find_one(
-            {"_id": patient_object_id}
+        patient_object_id = get_patient_object_id(
+            update_data["patient_id"]
         )
-
-        if not patient:
-            raise HTTPException(
-                status_code=404,
-                detail="Patient not found"
-            )
 
         update_data["patient_id"] = patient_object_id
 
     else:
+
         patient_object_id = existing_record["patient_id"]
 
+    # =====================================================
     # Doctor
+    # =====================================================
+
     if "doctor_id" in update_data:
 
-        try:
-            doctor_object_id = ObjectId(
-                update_data["doctor_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid doctor ID"
-            )
-
-        doctor = doctors_collection.find_one(
-            {"_id": doctor_object_id}
+        doctor_object_id = get_doctor_object_id(
+            update_data["doctor_id"]
         )
-
-        if not doctor:
-            raise HTTPException(
-                status_code=404,
-                detail="Doctor not found"
-            )
 
         # Doctor cannot assign record to another doctor
         if (
@@ -352,30 +359,18 @@ def update_medical_record(
         update_data["doctor_id"] = doctor_object_id
 
     else:
+
         doctor_object_id = existing_record["doctor_id"]
 
+    # =====================================================
     # Appointment
+    # =====================================================
+
     if "appointment_id" in update_data:
 
-        try:
-            appointment_object_id = ObjectId(
-                update_data["appointment_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid appointment ID"
-            )
-
-        appointment = appointments_collection.find_one(
-            {"_id": appointment_object_id}
+        appointment_object_id = get_appointment_object_id(
+            update_data["appointment_id"]
         )
-
-        if not appointment:
-            raise HTTPException(
-                status_code=404,
-                detail="Appointment not found"
-            )
 
         update_data["appointment_id"] = appointment_object_id
 
@@ -394,6 +389,13 @@ def update_medical_record(
                 status_code=404,
                 detail="Appointment not found"
             )
+
+    # If appointment_id was supplied, get appointment
+    if "appointment_id" in update_data:
+
+        appointment = appointments_collection.find_one(
+            {"_id": appointment_object_id}
+        )
 
     # Check appointment belongs to patient
     if appointment["patient_id"] != patient_object_id:
@@ -420,7 +422,10 @@ def update_medical_record(
     }
 
 
+# =========================================================
 # Delete medical record
+# =========================================================
+
 @router.delete("/medical-records/{record_id}")
 def delete_medical_record(
     record_id: str,
@@ -431,9 +436,7 @@ def delete_medical_record(
 
     # Convert medical record ID
     try:
-        record_object_id = ObjectId(
-            record_id
-        )
+        record_object_id = ObjectId(record_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,

@@ -13,6 +13,19 @@ from app.schemas.department import (
 router = APIRouter()
 
 
+# Reusable department ID validation
+def get_department_object_id(department_id: str):
+
+    try:
+        return ObjectId(department_id)
+
+    except InvalidId:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid department ID"
+        )
+
+
 # Create department
 @router.post("/departments")
 def create_department(
@@ -80,16 +93,9 @@ def update_department(
 ):
 
     # Validate department ID
-    try:
-        department_object_id = ObjectId(
-            department_id
-        )
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid department ID"
-        )
+    department_object_id = get_department_object_id(
+        department_id
+    )
 
     # Check department exists
     existing_department = departments_collection.find_one(
@@ -155,16 +161,9 @@ def delete_department(
 ):
 
     # Validate department ID
-    try:
-        department_object_id = ObjectId(
-            department_id
-        )
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid department ID"
-        )
+    department_object_id = get_department_object_id(
+        department_id
+    )
 
     result = departments_collection.delete_one(
         {"_id": department_object_id}

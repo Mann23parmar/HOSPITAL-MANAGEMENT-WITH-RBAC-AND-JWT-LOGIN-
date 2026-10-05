@@ -10,12 +10,34 @@ from app.schemas.medicine import MedicineCreate, MedicineUpdate
 router = APIRouter()
 
 
+# ---------------------------------------------------------
+# Reusable helper: Validate medicine ID
+# ---------------------------------------------------------
+
+def get_medicine_object_id(medicine_id: str):
+
+    try:
+        return ObjectId(medicine_id)
+
+    except InvalidId:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid medicine ID"
+        )
+
+
+# ---------------------------------------------------------
 # Create medicine
+# ---------------------------------------------------------
+
 @router.post("/medicines")
 def create_medicine(
     medicine: MedicineCreate,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(
+        require_role("admin")
+    )
 ):
+
     # Check duplicate medicine
     existing_medicine = medicines_collection.find_one(
         {
@@ -33,16 +55,23 @@ def create_medicine(
     medicine_data = medicine.model_dump()
 
     # Convert date to string before storing in MongoDB
-    medicine_data["expiry_date"] = medicine.expiry_date.isoformat()
+    medicine_data["expiry_date"] = (
+        medicine.expiry_date.isoformat()
+    )
 
-    medicines_collection.insert_one(medicine_data)
+    medicines_collection.insert_one(
+        medicine_data
+    )
 
     return {
         "message": "Medicine created successfully"
     }
 
 
+# ---------------------------------------------------------
 # Get all medicines
+# ---------------------------------------------------------
+
 @router.get("/medicines")
 def get_medicines(
     current_user: dict = Depends(
@@ -54,6 +83,7 @@ def get_medicines(
         )
     )
 ):
+
     medicines = list(
         medicines_collection.find(
             {},
@@ -64,21 +94,23 @@ def get_medicines(
     return medicines
 
 
+# ---------------------------------------------------------
 # Update medicine
+# ---------------------------------------------------------
+
 @router.put("/medicines/{medicine_id}")
 def update_medicine(
     medicine_id: str,
     medicine: MedicineUpdate,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(
+        require_role("admin")
+    )
 ):
-    # Check medicine ID
-    try:
-        medicine_object_id = ObjectId(medicine_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid medicine ID"
-        )
+
+    # Validate medicine ID
+    medicine_object_id = get_medicine_object_id(
+        medicine_id
+    )
 
     # Check medicine exists
     existing_medicine = medicines_collection.find_one(
@@ -92,8 +124,11 @@ def update_medicine(
         )
 
     # Get only fields provided by the user
-    update_data = medicine.model_dump(exclude_unset=True)
+    update_data = medicine.model_dump(
+        exclude_unset=True
+    )
 
+    # Prevent empty update
     if not update_data:
         raise HTTPException(
             status_code=400,
@@ -102,7 +137,10 @@ def update_medicine(
 
     # Check duplicate medicine when
     # name or manufacturer is being updated
-    if "name" in update_data or "manufacturer" in update_data:
+    if (
+        "name" in update_data
+        or "manufacturer" in update_data
+    ):
 
         medicine_name = update_data.get(
             "name",
@@ -118,7 +156,9 @@ def update_medicine(
             {
                 "name": medicine_name,
                 "manufacturer": medicine_manufacturer,
-                "_id": {"$ne": medicine_object_id}
+                "_id": {
+                    "$ne": medicine_object_id
+                }
             }
         )
 
@@ -130,7 +170,10 @@ def update_medicine(
 
     # Convert date to string before MongoDB update
     if "expiry_date" in update_data:
-        update_data["expiry_date"] = update_data["expiry_date"].isoformat()
+
+        update_data["expiry_date"] = (
+            update_data["expiry_date"].isoformat()
+        )
 
     # Update only provided fields
     medicines_collection.update_one(
@@ -143,20 +186,22 @@ def update_medicine(
     }
 
 
+# ---------------------------------------------------------
 # Delete medicine
+# ---------------------------------------------------------
+
 @router.delete("/medicines/{medicine_id}")
 def delete_medicine(
     medicine_id: str,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(
+        require_role("admin")
+    )
 ):
-    # Check medicine ID
-    try:
-        medicine_object_id = ObjectId(medicine_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid medicine ID"
-        )
+
+    # Validate medicine ID
+    medicine_object_id = get_medicine_object_id(
+        medicine_id
+    )
 
     result = medicines_collection.delete_one(
         {"_id": medicine_object_id}

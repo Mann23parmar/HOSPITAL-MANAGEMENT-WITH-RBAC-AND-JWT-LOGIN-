@@ -15,27 +15,20 @@ from app.schemas.doctor import DoctorCreate, DoctorUpdate
 router = APIRouter()
 
 
-# Create doctor
-@router.post("/doctors")
-def create_doctor(
-    doctor: DoctorCreate,
-    current_user: dict = Depends(
-        require_role("admin")
-    )
-):
+# ---------------------------------------------------------
+# Reusable helper: Validate doctor user
+# ---------------------------------------------------------
 
-    # Check user ID
+def get_doctor_user_object_id(user_id: str):
+
     try:
-        user_object_id = ObjectId(
-            doctor.user_id
-        )
+        user_object_id = ObjectId(user_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid user ID"
         )
 
-    # Check user exists
     user = users_collection.find_one(
         {"_id": user_object_id}
     )
@@ -46,25 +39,29 @@ def create_doctor(
             detail="User not found"
         )
 
-    # Check user has doctor role
     if user["role"] != "doctor":
         raise HTTPException(
             status_code=400,
             detail="Selected user does not have doctor role"
         )
 
-    # Check department ID
+    return user_object_id
+
+
+# ---------------------------------------------------------
+# Reusable helper: Validate department
+# ---------------------------------------------------------
+
+def get_department_object_id(department_id: str):
+
     try:
-        department_object_id = ObjectId(
-            doctor.department_id
-        )
+        department_object_id = ObjectId(department_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid department ID"
         )
 
-    # Check department exists
     department = departments_collection.find_one(
         {"_id": department_object_id}
     )
@@ -74,6 +71,46 @@ def create_doctor(
             status_code=404,
             detail="Department not found"
         )
+
+    return department_object_id
+
+
+# ---------------------------------------------------------
+# Reusable helper: Validate doctor ID
+# ---------------------------------------------------------
+
+def get_doctor_object_id(doctor_id: str):
+
+    try:
+        return ObjectId(doctor_id)
+    except InvalidId:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid doctor ID"
+        )
+
+
+# ---------------------------------------------------------
+# Create doctor
+# ---------------------------------------------------------
+
+@router.post("/doctors")
+def create_doctor(
+    doctor: DoctorCreate,
+    current_user: dict = Depends(
+        require_role("admin")
+    )
+):
+
+    # Validate user
+    user_object_id = get_doctor_user_object_id(
+        doctor.user_id
+    )
+
+    # Validate department
+    department_object_id = get_department_object_id(
+        doctor.department_id
+    )
 
     # Check duplicate phone
     existing_phone = doctors_collection.find_one(
@@ -103,7 +140,10 @@ def create_doctor(
     }
 
 
+# ---------------------------------------------------------
 # Get all doctors
+# ---------------------------------------------------------
+
 @router.get("/doctors")
 def get_doctors(
     current_user: dict = Depends(
@@ -177,7 +217,10 @@ def get_doctors(
     return doctors
 
 
+# ---------------------------------------------------------
 # Update doctor
+# ---------------------------------------------------------
+
 @router.put("/doctors/{doctor_id}")
 def update_doctor(
     doctor_id: str,
@@ -187,16 +230,10 @@ def update_doctor(
     )
 ):
 
-    # Check doctor ID
-    try:
-        doctor_object_id = ObjectId(
-            doctor_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
-        )
+    # Validate doctor ID
+    doctor_object_id = get_doctor_object_id(
+        doctor_id
+    )
 
     # Check doctor exists
     existing_doctor = doctors_collection.find_one(
@@ -224,56 +261,18 @@ def update_doctor(
     # Validate user_id only if provided
     if "user_id" in update_data:
 
-        try:
-            user_object_id = ObjectId(
-                update_data["user_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid user ID"
-            )
-
-        user = users_collection.find_one(
-            {"_id": user_object_id}
+        user_object_id = get_doctor_user_object_id(
+            update_data["user_id"]
         )
-
-        if not user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
-
-        if user["role"] != "doctor":
-            raise HTTPException(
-                status_code=400,
-                detail="Selected user does not have doctor role"
-            )
 
         update_data["user_id"] = user_object_id
 
     # Validate department_id only if provided
     if "department_id" in update_data:
 
-        try:
-            department_object_id = ObjectId(
-                update_data["department_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid department ID"
-            )
-
-        department = departments_collection.find_one(
-            {"_id": department_object_id}
+        department_object_id = get_department_object_id(
+            update_data["department_id"]
         )
-
-        if not department:
-            raise HTTPException(
-                status_code=404,
-                detail="Department not found"
-            )
 
         update_data["department_id"] = (
             department_object_id
@@ -310,7 +309,10 @@ def update_doctor(
     }
 
 
+# ---------------------------------------------------------
 # Delete doctor
+# ---------------------------------------------------------
+
 @router.delete("/doctors/{doctor_id}")
 def delete_doctor(
     doctor_id: str,
@@ -319,16 +321,10 @@ def delete_doctor(
     )
 ):
 
-    # Check doctor ID
-    try:
-        doctor_object_id = ObjectId(
-            doctor_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
-        )
+    # Validate doctor ID
+    doctor_object_id = get_doctor_object_id(
+        doctor_id
+    )
 
     result = doctors_collection.delete_one(
         {"_id": doctor_object_id}

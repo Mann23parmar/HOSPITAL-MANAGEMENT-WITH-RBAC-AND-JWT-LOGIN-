@@ -15,27 +15,20 @@ from app.schemas.nurse import NurseCreate, NurseUpdate
 router = APIRouter()
 
 
-# Create nurse
-@router.post("/nurses")
-def create_nurse(
-    nurse: NurseCreate,
-    current_user: dict = Depends(
-        require_role("admin")
-    )
-):
+# ---------------------------------------------------------
+# Reusable helper: Validate nurse user
+# ---------------------------------------------------------
 
-    # Validate user ID
+def get_nurse_user_object_id(user_id: str):
+
     try:
-        user_object_id = ObjectId(
-            nurse.user_id
-        )
+        user_object_id = ObjectId(user_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid user ID"
         )
 
-    # Check user exists
     user = users_collection.find_one({
         "_id": user_object_id
     })
@@ -46,25 +39,29 @@ def create_nurse(
             detail="User not found"
         )
 
-    # Check user has nurse role
     if user["role"] != "nurse":
         raise HTTPException(
             status_code=400,
             detail="Selected user does not have nurse role"
         )
 
-    # Validate department ID
+    return user_object_id
+
+
+# ---------------------------------------------------------
+# Reusable helper: Validate department
+# ---------------------------------------------------------
+
+def get_department_object_id(department_id: str):
+
     try:
-        department_object_id = ObjectId(
-            nurse.department_id
-        )
+        department_object_id = ObjectId(department_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid department ID"
         )
 
-    # Check department exists
     department = departments_collection.find_one({
         "_id": department_object_id
     })
@@ -74,6 +71,31 @@ def create_nurse(
             status_code=404,
             detail="Department not found"
         )
+
+    return department_object_id
+
+
+# ---------------------------------------------------------
+# Create nurse
+# ---------------------------------------------------------
+
+@router.post("/nurses")
+def create_nurse(
+    nurse: NurseCreate,
+    current_user: dict = Depends(
+        require_role("admin")
+    )
+):
+
+    # Validate user
+    user_object_id = get_nurse_user_object_id(
+        nurse.user_id
+    )
+
+    # Validate department
+    department_object_id = get_department_object_id(
+        nurse.department_id
+    )
 
     # Check duplicate phone
     existing_phone = nurses_collection.find_one({
@@ -104,7 +126,10 @@ def create_nurse(
     }
 
 
+# ---------------------------------------------------------
 # Get all nurses
+# ---------------------------------------------------------
+
 @router.get("/nurses")
 def get_nurses(
     current_user: dict = Depends(
@@ -176,7 +201,10 @@ def get_nurses(
     return nurses
 
 
+# ---------------------------------------------------------
 # Update nurse
+# ---------------------------------------------------------
+
 @router.put("/nurses/{nurse_id}")
 def update_nurse(
     nurse_id: str,
@@ -188,9 +216,7 @@ def update_nurse(
 
     # Validate nurse ID
     try:
-        nurse_object_id = ObjectId(
-            nurse_id
-        )
+        nurse_object_id = ObjectId(nurse_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
@@ -223,56 +249,18 @@ def update_nurse(
     # Validate user ID if provided
     if "user_id" in update_data:
 
-        try:
-            user_object_id = ObjectId(
-                update_data["user_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid user ID"
-            )
-
-        user = users_collection.find_one({
-            "_id": user_object_id
-        })
-
-        if not user:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found"
-            )
-
-        if user["role"] != "nurse":
-            raise HTTPException(
-                status_code=400,
-                detail="Selected user does not have nurse role"
-            )
+        user_object_id = get_nurse_user_object_id(
+            update_data["user_id"]
+        )
 
         update_data["user_id"] = user_object_id
 
     # Validate department ID if provided
     if "department_id" in update_data:
 
-        try:
-            department_object_id = ObjectId(
-                update_data["department_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid department ID"
-            )
-
-        department = departments_collection.find_one({
-            "_id": department_object_id
-        })
-
-        if not department:
-            raise HTTPException(
-                status_code=404,
-                detail="Department not found"
-            )
+        department_object_id = get_department_object_id(
+            update_data["department_id"]
+        )
 
         update_data["department_id"] = department_object_id
 
@@ -303,7 +291,10 @@ def update_nurse(
     }
 
 
+# ---------------------------------------------------------
 # Delete nurse
+# ---------------------------------------------------------
+
 @router.delete("/nurses/{nurse_id}")
 def delete_nurse(
     nurse_id: str,
@@ -314,9 +305,7 @@ def delete_nurse(
 
     # Validate nurse ID
     try:
-        nurse_object_id = ObjectId(
-            nurse_id
-        )
+        nurse_object_id = ObjectId(nurse_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,

@@ -85,6 +85,18 @@ def get_nurse_object_id(nurse_id: str):
     return nurse_object_id
 
 
+# Reusable vitals ID validation
+def get_vitals_object_id(vitals_id: str):
+
+    try:
+        return ObjectId(vitals_id)
+    except InvalidId:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid vitals ID"
+        )
+
+
 # Create patient vitals
 @router.post("/patient-vitals")
 def create_patient_vitals(
@@ -209,13 +221,9 @@ def update_patient_vitals(
 ):
 
     # Validate vitals ID
-    try:
-        vitals_object_id = ObjectId(vitals_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid vitals ID"
-        )
+    vitals_object_id = get_vitals_object_id(
+        vitals_id
+    )
 
     # Check vitals exist
     existing_vitals = patient_vitals_collection.find_one({
@@ -279,13 +287,9 @@ def delete_patient_vitals(
 ):
 
     # Validate vitals ID
-    try:
-        vitals_object_id = ObjectId(vitals_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid vitals ID"
-        )
+    vitals_object_id = get_vitals_object_id(
+        vitals_id
+    )
 
     # Delete vitals
     result = patient_vitals_collection.delete_one({

@@ -67,6 +67,22 @@ def get_doctor_object_id(doctor_id: str):
     return doctor_object_id
 
 
+# Reusable appointment ID validation
+def get_appointment_object_id(appointment_id: str):
+
+    try:
+        appointment_object_id = ObjectId(
+            appointment_id
+        )
+    except InvalidId:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid appointment ID"
+        )
+
+    return appointment_object_id
+
+
 # Create appointment
 @router.post("/appointments")
 def create_appointment(
@@ -130,6 +146,7 @@ def get_appointments(
 
     # Doctor: show only own appointments
     if current_user["role"] == "doctor":
+
         current_doctor = get_current_doctor(
             current_user
         )
@@ -149,6 +166,7 @@ def get_appointments(
 
         # Patient
         if "patient_id" in appointment:
+
             patient_id = str(
                 appointment["patient_id"]
             )
@@ -167,6 +185,7 @@ def get_appointments(
 
         # Doctor
         if "doctor_id" in appointment:
+
             doctor_id = str(
                 appointment["doctor_id"]
             )
@@ -185,6 +204,7 @@ def get_appointments(
 
         # Created by
         if "created_by" in appointment:
+
             appointment["created_by"] = str(
                 appointment["created_by"]
             )
@@ -206,16 +226,10 @@ def update_appointment(
     )
 ):
 
-    # Check appointment ID
-    try:
-        appointment_object_id = ObjectId(
-            appointment_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid appointment ID"
-        )
+    # Validate appointment ID
+    appointment_object_id = get_appointment_object_id(
+        appointment_id
+    )
 
     # Check appointment exists
     existing_appointment = appointments_collection.find_one(
@@ -232,11 +246,13 @@ def update_appointment(
     current_doctor = None
 
     if current_user["role"] == "doctor":
+
         current_doctor = get_current_doctor(
             current_user
         )
 
         if existing_appointment["doctor_id"] != current_doctor["_id"]:
+
             raise HTTPException(
                 status_code=403,
                 detail="You do not have permission to update this appointment"
@@ -249,6 +265,7 @@ def update_appointment(
 
     # Check empty update
     if not update_data:
+
         raise HTTPException(
             status_code=400,
             detail="At least one field is required for update"
@@ -276,6 +293,7 @@ def update_appointment(
             current_user["role"] == "doctor"
             and doctor_object_id != current_doctor["_id"]
         ):
+
             raise HTTPException(
                 status_code=403,
                 detail="Doctor cannot assign this appointment to another doctor"
@@ -293,6 +311,7 @@ def update_appointment(
         }
 
         if update_data["status"] not in allowed_statuses:
+
             raise HTTPException(
                 status_code=400,
                 detail="Invalid appointment status"
@@ -300,12 +319,14 @@ def update_appointment(
 
     # Convert date to string
     if "appointment_date" in update_data:
+
         update_data["appointment_date"] = (
             update_data["appointment_date"].isoformat()
         )
 
     # Convert time to string
     if "appointment_time" in update_data:
+
         update_data["appointment_time"] = (
             update_data["appointment_time"].isoformat()
         )
@@ -330,22 +351,17 @@ def delete_appointment(
     )
 ):
 
-    # Check appointment ID
-    try:
-        appointment_object_id = ObjectId(
-            appointment_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid appointment ID"
-        )
+    # Validate appointment ID
+    appointment_object_id = get_appointment_object_id(
+        appointment_id
+    )
 
     result = appointments_collection.delete_one(
         {"_id": appointment_object_id}
     )
 
     if result.deleted_count == 0:
+
         raise HTTPException(
             status_code=404,
             detail="Appointment not found"
@@ -354,5 +370,3 @@ def delete_appointment(
     return {
         "message": "Appointment deleted successfully"
     }
-    
-    

@@ -2,19 +2,39 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.database.connection import patients_collection
-from app.core.rbac import require_role
-from app.schemas.patient import PatientCreate, PatientUpdate
 from app.database.connection import (
     patients_collection,
     appointments_collection,
     doctors_collection
 )
 
+from app.core.rbac import require_role
+from app.schemas.patient import PatientCreate, PatientUpdate
+
+
 router = APIRouter()
 
 
+# ---------------------------------------------------------
+# Reusable helper: Validate patient ID
+# ---------------------------------------------------------
+
+def get_patient_object_id(patient_id: str):
+
+    try:
+        return ObjectId(patient_id)
+
+    except InvalidId:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid patient ID"
+        )
+
+
+# ---------------------------------------------------------
 # Create patient
+# ---------------------------------------------------------
+
 @router.post("/patients")
 def create_patient(
     patient: PatientCreate,
@@ -56,8 +76,10 @@ def create_patient(
     }
 
 
+# ---------------------------------------------------------
 # Get all patients
-# Get patients
+# ---------------------------------------------------------
+
 @router.get("/patients")
 def get_patients(
     current_user: dict = Depends(
@@ -82,6 +104,7 @@ def get_patients(
             user_object_id = ObjectId(
                 current_user["user_id"]
             )
+
         except InvalidId:
             raise HTTPException(
                 status_code=401,
@@ -128,16 +151,21 @@ def get_patients(
         )
     )
 
+    # Convert ObjectIds to strings
     for patient in patients:
 
-        # Convert created_by ObjectId to string
         if "created_by" in patient:
             patient["created_by"] = str(
                 patient["created_by"]
             )
 
     return patients
+
+
+# ---------------------------------------------------------
 # Update patient
+# ---------------------------------------------------------
+
 @router.put("/patients/{patient_id}")
 def update_patient(
     patient_id: str,
@@ -151,16 +179,9 @@ def update_patient(
 ):
 
     # Validate patient ID
-    try:
-        patient_object_id = ObjectId(
-            patient_id
-        )
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
+    patient_object_id = get_patient_object_id(
+        patient_id
+    )
 
     # Check patient exists
     existing_patient = patients_collection.find_one(
@@ -223,7 +244,10 @@ def update_patient(
     }
 
 
+# ---------------------------------------------------------
 # Delete patient
+# ---------------------------------------------------------
+
 @router.delete("/patients/{patient_id}")
 def delete_patient(
     patient_id: str,
@@ -232,17 +256,10 @@ def delete_patient(
     )
 ):
 
-    # Check patient ID
-    try:
-        patient_object_id = ObjectId(
-            patient_id
-        )
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
+    # Validate patient ID
+    patient_object_id = get_patient_object_id(
+        patient_id
+    )
 
     result = patients_collection.delete_one(
         {"_id": patient_object_id}

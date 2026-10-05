@@ -9,78 +9,75 @@ from pydantic import (
 import re
 
 
-class PatientVitalsValidation(BaseModel):
+# =========================================================
+# Reusable validation functions
+# =========================================================
 
-    @field_validator("blood_pressure", check_fields=False)
-    @classmethod
-    def validate_blood_pressure(cls, value):
-
-        if value is None:
-            return value
-
-        if not re.fullmatch(r"\d{2,3}/\d{2,3}", value):
-            raise ValueError(
-                "Blood pressure must be in format like 120/80"
-            )
-
-        systolic, diastolic = map(int, value.split("/"))
-
-        if not 50 <= systolic <= 250:
-            raise ValueError(
-                "Systolic blood pressure must be between 50 and 250"
-            )
-
-        if not 30 <= diastolic <= 150:
-            raise ValueError(
-                "Diastolic blood pressure must be between 30 and 150"
-            )
-
+def validate_blood_pressure(value):
+    if value is None:
         return value
 
-    @field_validator("temperature", mode="before", check_fields=False)
-    @classmethod
-    def validate_temperature(cls, value):
+    if not re.fullmatch(r"\d{2,3}/\d{2,3}", value):
+        raise ValueError(
+            "Blood pressure must be in format like 120/80"
+        )
 
-        if value is None:
-            return value
+    systolic, diastolic = map(int, value.split("/"))
 
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(
-                "Temperature must be a valid number"
-            )
+    if not 50 <= systolic <= 250:
+        raise ValueError(
+            "Systolic blood pressure must be between 50 and 250"
+        )
 
+    if not 30 <= diastolic <= 150:
+        raise ValueError(
+            "Diastolic blood pressure must be between 30 and 150"
+        )
+
+    return value
+
+
+def validate_temperature(value):
+    if value is None:
         return value
 
-    @field_validator("pulse_rate", mode="before", check_fields=False)
-    @classmethod
-    def validate_pulse_rate(cls, value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(
+            "Temperature must be a valid number"
+        )
 
-        if value is None:
-            return value
+    return value
 
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise ValueError(
-                "Pulse rate must be a valid integer"
-            )
 
+def validate_pulse_rate(value):
+    if value is None:
         return value
 
-    @field_validator("weight", mode="before", check_fields=False)
-    @classmethod
-    def validate_weight(cls, value):
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(
+            "Pulse rate must be a valid integer"
+        )
 
-        if value is None:
-            return value
+    return value
 
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(
-                "Weight must be a valid number"
-            )
 
+def validate_weight(value):
+    if value is None:
         return value
 
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(
+            "Weight must be a valid number"
+        )
 
-class PatientVitalsCreate(PatientVitalsValidation):
+    return value
+
+
+# =========================================================
+# CREATE
+# =========================================================
+
+class PatientVitalsCreate(BaseModel):
 
     patient_id: StrictStr = Field(
         ...,
@@ -121,8 +118,32 @@ class PatientVitalsCreate(PatientVitalsValidation):
         examples=[65.5]
     )
 
+    @field_validator("blood_pressure")
+    @classmethod
+    def validate_create_blood_pressure(cls, value):
+        return validate_blood_pressure(value)
 
-class PatientVitalsUpdate(PatientVitalsValidation):
+    @field_validator("temperature", mode="before")
+    @classmethod
+    def validate_create_temperature(cls, value):
+        return validate_temperature(value)
+
+    @field_validator("pulse_rate", mode="before")
+    @classmethod
+    def validate_create_pulse_rate(cls, value):
+        return validate_pulse_rate(value)
+
+    @field_validator("weight", mode="before")
+    @classmethod
+    def validate_create_weight(cls, value):
+        return validate_weight(value)
+
+
+# =========================================================
+# UPDATE
+# =========================================================
+
+class PatientVitalsUpdate(BaseModel):
 
     patient_id: StrictStr | None = Field(
         default=None,
@@ -157,3 +178,23 @@ class PatientVitalsUpdate(PatientVitalsValidation):
         default=None,
         gt=0
     )
+
+    @field_validator("blood_pressure")
+    @classmethod
+    def validate_update_blood_pressure(cls, value):
+        return validate_blood_pressure(value)
+
+    @field_validator("temperature", mode="before")
+    @classmethod
+    def validate_update_temperature(cls, value):
+        return validate_temperature(value)
+
+    @field_validator("pulse_rate", mode="before")
+    @classmethod
+    def validate_update_pulse_rate(cls, value):
+        return validate_pulse_rate(value)
+
+    @field_validator("weight", mode="before")
+    @classmethod
+    def validate_update_weight(cls, value):
+        return validate_weight(value)
