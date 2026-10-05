@@ -1,19 +1,22 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictStr
 from datetime import date, time
+
 
 class AppointmentCreate(BaseModel):
 
-    patient_id: str = Field(
+    patient_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f123456789abcdef123456"]
     )
 
-    doctor_id: str = Field(
+    doctor_id: StrictStr = Field(
         ...,
         min_length=24,
         max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$",
         examples=["66f987654321abcdef654321"]
     )
 
@@ -27,7 +30,7 @@ class AppointmentCreate(BaseModel):
         examples=["10:30"]
     )
 
-    reason: str = Field(
+    reason: StrictStr = Field(
         ...,
         min_length=3,
         max_length=300,
@@ -37,30 +40,31 @@ class AppointmentCreate(BaseModel):
 
 class AppointmentUpdate(BaseModel):
 
-    patient_id: str | None = Field(
+    patient_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
-    doctor_id: str | None = Field(
+    doctor_id: StrictStr | None = Field(
         default=None,
         min_length=24,
-        max_length=24
+        max_length=24,
+        pattern=r"^[0-9a-fA-F]{24}$"
     )
 
     appointment_date: date | None = None
 
     appointment_time: time | None = None
 
-    reason: str | None = Field(
+    reason: StrictStr | None = Field(
         default=None,
         min_length=3,
         max_length=300
     )
 
-    status: str | None = Field(
+    status: StrictStr | None = Field(
         default=None,
         examples=["scheduled"]
     )
-    
