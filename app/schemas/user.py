@@ -43,5 +43,10 @@ class UserLogin(BaseModel):
         ...,
         min_length=8,
         max_length=100,
-        examples=["Doctor@123"]
-    )
+        examples=["Doctor@123"])
+
+
+# Admin uses this schema to activate/deactivate a user
+class UserStatusUpdate(BaseModel):
+
+    is_active: bool

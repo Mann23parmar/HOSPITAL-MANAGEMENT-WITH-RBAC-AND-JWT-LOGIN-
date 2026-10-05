@@ -31,7 +31,7 @@ def create_initial_admin(admin: InitialAdminCreate):
         "email": admin.email,
         "password": hashed_password,
         "role": "admin",
-        "is_active": False,
+        "is_active": True,
         "created_at": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
     }
 
