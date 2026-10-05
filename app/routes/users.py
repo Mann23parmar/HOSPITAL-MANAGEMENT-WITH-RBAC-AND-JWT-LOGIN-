@@ -1,26 +1,27 @@
-from fastapi import APIRouter, HTTPException, Depends
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from fastapi import APIRouter, Depends, HTTPException
+from bson import ObjectId
 
-from app.schemas.user import UserCreate, UserStatusUpdate
 from app.database.connection import users_collection
+from app.schemas.user import UserCreate, UserStatusUpdate
+from app.services.auth_service import get_current_user, hash_password
 from app.core.rbac import require_role
-from app.services.auth_service import hash_password
 
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/users",
+    tags=["Users"]
+)
 
 
-# Admin creates a user
-@router.post("/users")
+@router.post(
+    "/",
+    dependencies=[Depends(require_role("admin"))]
+)
 def create_user(
     user: UserCreate,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(get_current_user)
 ):
-    # Admin users cannot be created from this endpoint
-    
-
-    # Check whether email already exists
+    # Check if email already exists
     existing_user = users_collection.find_one({
         "email": user.email
     })
@@ -28,69 +29,71 @@ def create_user(
     if existing_user:
         raise HTTPException(
             status_code=400,
-            detail="Email already exists"
+            detail="Email already registered"
         )
 
-    # Hash password before storing
-    hashed_password = hash_password(user.password)
-
+    # Create user
     user_data = {
         "email": user.email,
-        "password": hashed_password,
+        "password": hash_password(user.password),
         "role": user.role.value,
-        "is_active": True,
-        "created_at": datetime.now(
-            ZoneInfo("Asia/Kolkata")
-        ).isoformat()
+        "is_active": True
     }
 
-    users_collection.insert_one(user_data)
+    result = users_collection.insert_one(user_data)
 
     return {
-        "message": "User created successfully"
+        "message": "User created successfully",
+        "user_id": str(result.inserted_id),
+        "email": user.email,
+        "role": user.role.value
     }
 
 
-# Admin changes user's active/inactive status
-@router.patch("/users/{user_id}/status")
+@router.patch(
+    "/{user_id}/status",
+    dependencies=[Depends(require_role("admin"))]
+)
 def update_user_status(
     user_id: str,
     status: UserStatusUpdate,
-    current_user: dict = Depends(require_role("admin"))
+    current_user: dict = Depends(get_current_user)
 ):
-    # Convert string ID to ObjectId
-    from bson import ObjectId
-    from bson.errors import InvalidId
-
-    try:
-        object_id = ObjectId(user_id)
-    except InvalidId:
+    # Validate ObjectId
+    if not ObjectId.is_valid(user_id):
         raise HTTPException(
             status_code=400,
             detail="Invalid user ID"
         )
 
+    # Prevent admin from changing their own status
+    if current_user["user_id"] == user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot change your own status"
+        )
+
     # Find user
-    user = users_collection.find_one({
-        "_id": object_id
+    existing_user = users_collection.find_one({
+        "_id": ObjectId(user_id)
     })
 
-    if not user:
+    if not existing_user:
         raise HTTPException(
             status_code=404,
             detail="User not found"
         )
 
-    # Admin cannot change their own status
-    if user_id == current_user["user_id"]:
+    # Prevent changing another admin's status
+    if existing_user.get("role") == "admin":
         raise HTTPException(
-            status_code=400,
-            detail="Admin cannot change their own status"
+            status_code=403,
+            detail="Admin user status cannot be changed"
         )
 
-    # Update active/inactive status
+    # Update status
     users_collection.update_one(
-        {"_id": object_id},
+        {"_id": ObjectId(user_id)},
         {
             "$set": {
                 "is_active": status.is_active
@@ -100,6 +103,6 @@ def update_user_status(
 
     return {
         "message": "User status updated successfully",
+        "user_id": user_id,
         "is_active": status.is_active
     }
-    

@@ -1,9 +1,17 @@
+
 from pydantic import BaseModel, Field, StrictStr
 from enum import Enum
 
 
 class Role(str, Enum):
     ADMIN = "admin"
+    DOCTOR = "doctor"
+    NURSE = "nurse"
+    RECEPTIONIST = "receptionist"
+
+
+# Roles that an admin is allowed to create
+class StaffRole(str, Enum):
     DOCTOR = "doctor"
     NURSE = "nurse"
     RECEPTIONIST = "receptionist"
@@ -26,7 +34,7 @@ class UserCreate(BaseModel):
         examples=["Doctor@123"]
     )
 
-    role: Role
+    role: StaffRole
 
 
 # User uses this schema to login

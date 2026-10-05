@@ -1,3 +1,4 @@
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
@@ -106,6 +107,17 @@ def create_doctor(
     user_object_id = get_doctor_user_object_id(
         doctor.user_id
     )
+
+    # Check if this user already has a doctor profile
+    existing_doctor = doctors_collection.find_one(
+        {"user_id": user_object_id}
+    )
+
+    if existing_doctor:
+        raise HTTPException(
+            status_code=400,
+            detail="This user already has a doctor profile"
+        )
 
     # Validate department
     department_object_id = get_department_object_id(
@@ -265,6 +277,22 @@ def update_doctor(
             update_data["user_id"]
         )
 
+        # Check if another doctor already uses this user
+        duplicate_user = doctors_collection.find_one(
+            {
+                "user_id": user_object_id,
+                "_id": {
+                    "$ne": doctor_object_id
+                }
+            }
+        )
+
+        if duplicate_user:
+            raise HTTPException(
+                status_code=400,
+                detail="This user already has another doctor profile"
+            )
+
         update_data["user_id"] = user_object_id
 
     # Validate department_id only if provided
@@ -313,6 +341,10 @@ def update_doctor(
 # Delete doctor
 # ---------------------------------------------------------
 
+# ---------------------------------------------------------
+# Delete doctor
+# ---------------------------------------------------------
+
 @router.delete("/doctors/{doctor_id}")
 def delete_doctor(
     doctor_id: str,
@@ -326,15 +358,34 @@ def delete_doctor(
         doctor_id
     )
 
-    result = doctors_collection.delete_one(
+    # Find doctor
+    doctor = doctors_collection.find_one(
         {"_id": doctor_object_id}
     )
 
-    if result.deleted_count == 0:
+    if not doctor:
         raise HTTPException(
             status_code=404,
             detail="Doctor not found"
         )
+
+    # Get linked user ID
+    user_object_id = doctor["user_id"]
+
+    # Deactivate user account
+    users_collection.update_one(
+        {"_id": user_object_id},
+        {
+            "$set": {
+                "is_active": False
+            }
+        }
+    )
+
+    # Delete doctor profile
+    doctors_collection.delete_one(
+        {"_id": doctor_object_id}
+    )
 
     return {
         "message": "Doctor deleted successfully"

@@ -1,3 +1,4 @@
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
@@ -91,6 +92,17 @@ def create_nurse(
     user_object_id = get_nurse_user_object_id(
         nurse.user_id
     )
+
+    # Check if this user already has a nurse profile
+    existing_nurse = nurses_collection.find_one(
+        {"user_id": user_object_id}
+    )
+
+    if existing_nurse:
+        raise HTTPException(
+            status_code=400,
+            detail="This user already has a nurse profile"
+        )
 
     # Validate department
     department_object_id = get_department_object_id(
@@ -253,6 +265,22 @@ def update_nurse(
             update_data["user_id"]
         )
 
+        # Check if another nurse already uses this user
+        duplicate_user = nurses_collection.find_one(
+            {
+                "user_id": user_object_id,
+                "_id": {
+                    "$ne": nurse_object_id
+                }
+            }
+        )
+
+        if duplicate_user:
+            raise HTTPException(
+                status_code=400,
+                detail="This user already has another nurse profile"
+            )
+
         update_data["user_id"] = user_object_id
 
     # Validate department ID if provided
@@ -294,6 +322,9 @@ def update_nurse(
 # ---------------------------------------------------------
 # Delete nurse
 # ---------------------------------------------------------
+# ---------------------------------------------------------
+# Delete nurse
+# ---------------------------------------------------------
 
 @router.delete("/nurses/{nurse_id}")
 def delete_nurse(
@@ -312,16 +343,34 @@ def delete_nurse(
             detail="Invalid nurse ID"
         )
 
-    # Delete nurse
-    result = nurses_collection.delete_one({
+    # Find nurse
+    nurse = nurses_collection.find_one({
         "_id": nurse_object_id
     })
 
-    if result.deleted_count == 0:
+    if not nurse:
         raise HTTPException(
             status_code=404,
             detail="Nurse not found"
         )
+
+    # Get linked user ID
+    user_object_id = nurse["user_id"]
+
+    # Deactivate user account
+    users_collection.update_one(
+        {"_id": user_object_id},
+        {
+            "$set": {
+                "is_active": False
+            }
+        }
+    )
+
+    # Delete nurse profile
+    nurses_collection.delete_one({
+        "_id": nurse_object_id
+    })
 
     return {
         "message": "Nurse deleted successfully"
