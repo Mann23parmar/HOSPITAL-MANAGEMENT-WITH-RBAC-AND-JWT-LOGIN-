@@ -1,7 +1,21 @@
 from datetime import date
-from typing import Literal
 
-from pydantic import BaseModel, Field, StrictStr, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator
+)
+
+
+def validate_date_of_birth(value):
+    if value is not None and value >= date.today():
+        raise ValueError(
+            "Date of birth must be in the past"
+        )
+
+    return value
 
 
 class PatientCreate(BaseModel):
@@ -10,16 +24,19 @@ class PatientCreate(BaseModel):
         ...,
         min_length=2,
         max_length=100,
-        examples=["Amit Patel"]
+        examples=["John Doe"]
     )
 
-    date_of_birth: date = Field(
+    age: StrictInt = Field(
         ...,
-        examples=["1990-05-15"]
+        gt=0,
+        examples=[35]
     )
 
-    gender: Literal["Male", "Female", "Other"] = Field(
+    gender: StrictStr = Field(
         ...,
+        min_length=1,
+        max_length=20,
         examples=["Male"]
     )
 
@@ -27,7 +44,6 @@ class PatientCreate(BaseModel):
         ...,
         min_length=10,
         max_length=15,
-        pattern=r"^\d{10,15}$",   #meaning of this pattern is that it should be a string of digits with a length between 10 and 15 characters.
         examples=["9876543210"]
     )
 
@@ -38,37 +54,15 @@ class PatientCreate(BaseModel):
         examples=["Ahmedabad, Gujarat"]
     )
 
-    emergency_contact: StrictStr = Field(
+    date_of_birth: date = Field(
         ...,
-        min_length=10,
-        max_length=15,
-        pattern=r"^\d{10,15}$",
-        examples=["9876501234"]
-    )
-
-    blood_group: Literal[
-        "A+",
-        "A-",
-        "B+",
-        "B-",
-        "AB+",
-        "AB-",
-        "O+",
-        "O-"
-    ] = Field(
-        ...,
-        examples=["O+"]
+        examples=["1990-01-15"]
     )
 
     @field_validator("date_of_birth")
     @classmethod
-    def validate_date_of_birth(cls, value: date):
-        if value >= date.today():
-            raise ValueError(
-                "Date of birth must be in the past"
-            )
-
-        return value
+    def validate_patient_date_of_birth(cls, value):
+        return validate_date_of_birth(value)
 
 
 class PatientUpdate(BaseModel):
@@ -79,25 +73,21 @@ class PatientUpdate(BaseModel):
         max_length=100
     )
 
-    date_of_birth: date | None = Field(
+    age: StrictInt | None = Field(
         default=None,
-        examples=["1990-05-15"]
+        gt=0
     )
 
-    gender: Literal[
-        "Male",
-        "Female",
-        "Other"
-    ] | None = Field(
+    gender: StrictStr | None = Field(
         default=None,
-        examples=["Male"]
+        min_length=1,
+        max_length=20
     )
 
     phone: StrictStr | None = Field(
         default=None,
         min_length=10,
-        max_length=15,
-        pattern=r"^\d{10,15}$"
+        max_length=15
     )
 
     address: StrictStr | None = Field(
@@ -106,32 +96,13 @@ class PatientUpdate(BaseModel):
         max_length=200
     )
 
-    emergency_contact: StrictStr | None = Field(
-        default=None,
-        min_length=10,
-        max_length=15,
-        pattern=r"^\d{10,15}$"
-    )
-
-    blood_group: Literal[
-        "A+",
-        "A-",
-        "B+",
-        "B-",
-        "AB+",
-        "AB-",
-        "O+",
-        "O-"
-    ] | None = Field(
+    date_of_birth: date | None = Field(
         default=None
     )
 
     @field_validator("date_of_birth")
     @classmethod
-    def validate_date_of_birth(cls, value: date | None):
-        if value is not None and value >= date.today():
-            raise ValueError(
-                "Date of birth must be in the past"
-            )
-
-        return value
+    def validate_patient_date_of_birth(cls, value):
+        return validate_date_of_birth(value)
+    
+    

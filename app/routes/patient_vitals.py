@@ -19,27 +19,17 @@ from app.schemas.patient_vitals import (
 router = APIRouter()
 
 
-# Create patient vitals
-@router.post("/patient-vitals")
-def create_patient_vitals(
-    vitals: PatientVitalsCreate,
-    current_user: dict = Depends(
-        require_role("admin", "nurse")
-    )
-):
+# Reusable patient validation
+def get_patient_object_id(patient_id: str):
 
-    # Validate patient ID
     try:
-        patient_object_id = ObjectId(
-            vitals.patient_id
-        )
+        patient_object_id = ObjectId(patient_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid patient ID"
         )
 
-    # Check patient exists
     patient = patients_collection.find_one({
         "_id": patient_object_id
     })
@@ -50,18 +40,20 @@ def create_patient_vitals(
             detail="Patient not found"
         )
 
-    # Validate nurse ID
+    return patient_object_id
+
+
+# Reusable nurse validation
+def get_nurse_object_id(nurse_id: str):
+
     try:
-        nurse_object_id = ObjectId(
-            vitals.nurse_id
-        )
+        nurse_object_id = ObjectId(nurse_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid nurse ID"
         )
 
-    # Check nurse exists
     nurse = nurses_collection.find_one({
         "_id": nurse_object_id
     })
@@ -89,6 +81,28 @@ def create_patient_vitals(
             status_code=400,
             detail="Selected user does not have nurse role"
         )
+
+    return nurse_object_id
+
+
+# Create patient vitals
+@router.post("/patient-vitals")
+def create_patient_vitals(
+    vitals: PatientVitalsCreate,
+    current_user: dict = Depends(
+        require_role("admin", "nurse")
+    )
+):
+
+    # Validate patient
+    patient_object_id = get_patient_object_id(
+        vitals.patient_id
+    )
+
+    # Validate nurse
+    nurse_object_id = get_nurse_object_id(
+        vitals.nurse_id
+    )
 
     # Prepare vitals document
     vitals_data = {
@@ -229,68 +243,18 @@ def update_patient_vitals(
     # Validate patient ID if provided
     if "patient_id" in update_data:
 
-        try:
-            patient_object_id = ObjectId(
-                update_data["patient_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid patient ID"
-            )
-
-        patient = patients_collection.find_one({
-            "_id": patient_object_id
-        })
-
-        if not patient:
-            raise HTTPException(
-                status_code=404,
-                detail="Patient not found"
-            )
+        patient_object_id = get_patient_object_id(
+            update_data["patient_id"]
+        )
 
         update_data["patient_id"] = patient_object_id
 
     # Validate nurse ID if provided
     if "nurse_id" in update_data:
 
-        try:
-            nurse_object_id = ObjectId(
-                update_data["nurse_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid nurse ID"
-            )
-
-        nurse = nurses_collection.find_one({
-            "_id": nurse_object_id
-        })
-
-        if not nurse:
-            raise HTTPException(
-                status_code=404,
-                detail="Nurse not found"
-            )
-
-        # Check linked nurse user exists
-        nurse_user = users_collection.find_one({
-            "_id": nurse["user_id"]
-        })
-
-        if not nurse_user:
-            raise HTTPException(
-                status_code=404,
-                detail="Nurse user account not found"
-            )
-
-        # Check linked user has nurse role
-        if nurse_user["role"] != "nurse":
-            raise HTTPException(
-                status_code=400,
-                detail="Selected user does not have nurse role"
-            )
+        nurse_object_id = get_nurse_object_id(
+            update_data["nurse_id"]
+        )
 
         update_data["nurse_id"] = nurse_object_id
 

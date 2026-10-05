@@ -18,11 +18,7 @@ def create_user(
     current_user: dict = Depends(require_role("admin"))
 ):
     # Admin users cannot be created from this endpoint
-    if user.role.value == "admin":
-        raise HTTPException(
-            status_code=403,
-            detail="Admin users can only be created through the initial setup process"
-        )
+    
 
     # Check whether email already exists
     existing_user = users_collection.find_one({
@@ -106,3 +102,4 @@ def update_user_status(
         "message": "User status updated successfully",
         "is_active": status.is_active
     }
+    

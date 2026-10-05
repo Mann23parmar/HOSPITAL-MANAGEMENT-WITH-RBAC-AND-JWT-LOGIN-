@@ -1,6 +1,7 @@
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
+
 from app.core.authorization import get_current_doctor
 from app.database.connection import (
     appointments_collection,
@@ -14,31 +15,21 @@ from app.schemas.appointment import (
     AppointmentUpdate
 )
 
+
 router = APIRouter()
 
 
-# Get current doctor's profile
+# Reusable patient validation
+def get_patient_object_id(patient_id: str):
 
-# Create appointment
-@router.post("/appointments")
-def create_appointment(
-    appointment: AppointmentCreate,
-    current_user: dict = Depends(
-        require_role("admin", "receptionist")
-    )
-):
-    # Check patient ID
     try:
-        patient_object_id = ObjectId(
-            appointment.patient_id
-        )
+        patient_object_id = ObjectId(patient_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid patient ID"
         )
 
-    # Check patient exists
     patient = patients_collection.find_one(
         {"_id": patient_object_id}
     )
@@ -49,18 +40,20 @@ def create_appointment(
             detail="Patient not found"
         )
 
-    # Check doctor ID
+    return patient_object_id
+
+
+# Reusable doctor validation
+def get_doctor_object_id(doctor_id: str):
+
     try:
-        doctor_object_id = ObjectId(
-            appointment.doctor_id
-        )
+        doctor_object_id = ObjectId(doctor_id)
     except InvalidId:
         raise HTTPException(
             status_code=400,
             detail="Invalid doctor ID"
         )
 
-    # Check doctor exists
     doctor = doctors_collection.find_one(
         {"_id": doctor_object_id}
     )
@@ -71,6 +64,28 @@ def create_appointment(
             detail="Doctor not found"
         )
 
+    return doctor_object_id
+
+
+# Create appointment
+@router.post("/appointments")
+def create_appointment(
+    appointment: AppointmentCreate,
+    current_user: dict = Depends(
+        require_role("admin", "receptionist")
+    )
+):
+
+    # Validate patient
+    patient_object_id = get_patient_object_id(
+        appointment.patient_id
+    )
+
+    # Validate doctor
+    doctor_object_id = get_doctor_object_id(
+        appointment.doctor_id
+    )
+
     # Prepare appointment data
     appointment_data = {
         "patient_id": patient_object_id,
@@ -78,8 +93,12 @@ def create_appointment(
         "created_by": ObjectId(
             current_user["user_id"]
         ),
-        "appointment_date": appointment.appointment_date.isoformat(),
-        "appointment_time": appointment.appointment_time.isoformat(),
+        "appointment_date": (
+            appointment.appointment_date.isoformat()
+        ),
+        "appointment_time": (
+            appointment.appointment_time.isoformat()
+        ),
         "reason": appointment.reason,
         "status": "scheduled"
     }
@@ -105,6 +124,7 @@ def get_appointments(
         )
     )
 ):
+
     # Default: show all appointments
     query = {}
 
@@ -185,6 +205,7 @@ def update_appointment(
         )
     )
 ):
+
     # Check appointment ID
     try:
         appointment_object_id = ObjectId(
@@ -233,53 +254,21 @@ def update_appointment(
             detail="At least one field is required for update"
         )
 
-    # Effective patient ID
+    # Validate patient ID if provided
     if "patient_id" in update_data:
 
-        try:
-            patient_object_id = ObjectId(
-                update_data["patient_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid patient ID"
-            )
-
-        patient = patients_collection.find_one(
-            {"_id": patient_object_id}
+        patient_object_id = get_patient_object_id(
+            update_data["patient_id"]
         )
-
-        if not patient:
-            raise HTTPException(
-                status_code=404,
-                detail="Patient not found"
-            )
 
         update_data["patient_id"] = patient_object_id
 
-    # Effective doctor ID
+    # Validate doctor ID if provided
     if "doctor_id" in update_data:
 
-        try:
-            doctor_object_id = ObjectId(
-                update_data["doctor_id"]
-            )
-        except InvalidId:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid doctor ID"
-            )
-
-        doctor = doctors_collection.find_one(
-            {"_id": doctor_object_id}
+        doctor_object_id = get_doctor_object_id(
+            update_data["doctor_id"]
         )
-
-        if not doctor:
-            raise HTTPException(
-                status_code=404,
-                detail="Doctor not found"
-            )
 
         # Doctor cannot change appointment
         # to another doctor
@@ -340,6 +329,7 @@ def delete_appointment(
         require_role("admin")
     )
 ):
+
     # Check appointment ID
     try:
         appointment_object_id = ObjectId(
@@ -364,3 +354,5 @@ def delete_appointment(
     return {
         "message": "Appointment deleted successfully"
     }
+    
+    
