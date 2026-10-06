@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.schemas.user import UserLogin
-from app.database.connection import users_collection
-from app.services.auth_service import verify_password, create_access_token
+from app.database.connection import users_collection, revoked_tokens_collection
+from app.services.auth_service import (
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
 
 router = APIRouter()
 
@@ -36,8 +40,7 @@ def login(user: UserLogin):
         detail="User account is inactive"
     )
     access_token = create_access_token({
-        "sub": stored_user["email"],
-        "role": stored_user["role"]
+        "sub": str(stored_user["_id"]),
     })
 
     return {
@@ -45,3 +48,19 @@ def login(user: UserLogin):
         "access_token": access_token,
         "token_type": "bearer"
     }
+
+
+@router.post("/logout")
+def logout(current_user: dict = Depends(get_current_user)):
+    # Upsert makes repeated logout requests safe and idempotent.
+    revoked_tokens_collection.update_one(
+        {"jti": current_user["_token_jti"]},
+        {
+            "$setOnInsert": {
+                "jti": current_user["_token_jti"],
+                "expires_at": current_user["_token_expires_at"],
+            }
+        },
+        upsert=True,
+    )
+    return {"message": "Logout successful"}

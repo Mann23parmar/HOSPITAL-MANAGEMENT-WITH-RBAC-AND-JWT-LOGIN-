@@ -14,4 +14,6 @@ settings = Settings()
 
 JWT_SECRET_KEY = settings.jwt_secret_key
 JWT_ALGORITHM = "HS256"
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 30
+JWT_ISSUER = "hospital-management-api"
+JWT_AUDIENCE = "hospital-management-client"
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 15

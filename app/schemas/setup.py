@@ -12,6 +12,6 @@ class InitialAdminCreate(BaseModel):
     password: StrictStr = Field(
         ...,
         min_length=8,
-        max_length=100,
+        max_length=12,
         examples=["Admin@12345"]
     )

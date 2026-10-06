@@ -20,6 +20,11 @@ prescriptions_collection = db["prescriptions"]
 medicines_collection = db["medicines"]
 patient_vitals_collection = db["patient_vitals"]
 audit_logs_collection = db["audit_logs"]
+revoked_tokens_collection = db["revoked_tokens"]
+
+# Revoked access tokens remain blocked until they expire, then MongoDB removes them.
+revoked_tokens_collection.create_index("jti", unique=True)
+revoked_tokens_collection.create_index("expires_at", expireAfterSeconds=0)
 
 #allow only one admin to be created
 users_collection.create_index(
