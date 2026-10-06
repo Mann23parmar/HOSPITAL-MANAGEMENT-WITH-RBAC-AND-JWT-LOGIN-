@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, StrictStr
 from datetime import date, time
+from app.schemas.update_payload import UpdatePayload
 
 
 class AppointmentCreate(BaseModel):
@@ -38,7 +39,7 @@ class AppointmentCreate(BaseModel):
     )
 
 
-class AppointmentUpdate(BaseModel):
+class AppointmentUpdate(UpdatePayload):
 
     patient_id: StrictStr | None = Field(
         default=None,

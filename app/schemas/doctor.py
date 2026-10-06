@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, StrictStr
+from app.schemas.update_payload import UpdatePayload
 
 
 class DoctorCreate(BaseModel):
@@ -42,7 +43,7 @@ class DoctorCreate(BaseModel):
     )
 
 
-class DoctorUpdate(BaseModel):
+class DoctorUpdate(UpdatePayload):
 
     user_id: StrictStr | None = Field(
         default=None,

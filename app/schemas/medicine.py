@@ -8,6 +8,7 @@ from pydantic import (
     StrictStr,
     field_validator
 )
+from app.schemas.update_payload import UpdatePayload
 
 
 def validate_expiry_date(value):
@@ -64,7 +65,7 @@ class MedicineCreate(BaseModel):
         return validate_expiry_date(value)
 
 
-class MedicineUpdate(BaseModel):
+class MedicineUpdate(UpdatePayload):
 
     name: StrictStr | None = Field(
         default=None,

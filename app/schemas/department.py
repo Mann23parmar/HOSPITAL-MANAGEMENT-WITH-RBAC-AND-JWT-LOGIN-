@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, StrictStr
+from app.schemas.update_payload import UpdatePayload
 
 
 class DepartmentCreate(BaseModel):
@@ -25,7 +26,7 @@ class DepartmentCreate(BaseModel):
     )
 
 
-class DepartmentUpdate(BaseModel):
+class DepartmentUpdate(UpdatePayload):
 
     name: StrictStr | None = Field(
         default=None,

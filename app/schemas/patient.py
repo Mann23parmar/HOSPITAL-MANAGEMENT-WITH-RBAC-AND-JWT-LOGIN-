@@ -7,6 +7,7 @@ from pydantic import (
     StrictStr,
     field_validator
 )
+from app.schemas.update_payload import UpdatePayload
 
 
 def validate_date_of_birth(value):
@@ -65,7 +66,7 @@ class PatientCreate(BaseModel):
         return validate_date_of_birth(value)
 
 
-class PatientUpdate(BaseModel):
+class PatientUpdate(UpdatePayload):
 
     name: StrictStr | None = Field(
         default=None,

@@ -6,6 +6,7 @@ from pydantic import (
     StrictStr,
     field_validator
 )
+from app.schemas.update_payload import UpdatePayload
 import re
 
 
@@ -143,7 +144,7 @@ class PatientVitalsCreate(BaseModel):
 # UPDATE
 # =========================================================
 
-class PatientVitalsUpdate(BaseModel):
+class PatientVitalsUpdate(UpdatePayload):
 
     patient_id: StrictStr | None = Field(
         default=None,

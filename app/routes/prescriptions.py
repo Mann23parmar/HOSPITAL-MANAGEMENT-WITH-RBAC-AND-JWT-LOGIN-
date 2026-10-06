@@ -1,5 +1,7 @@
 from bson import ObjectId
 from bson.errors import InvalidId
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.authorization import get_current_doctor
@@ -98,7 +100,7 @@ def get_medical_record_object_id(medical_record_id: str):
 
 
 # Reusable medicine validation
-def get_medicine_object_id(medicine_id: str):
+def get_available_medicine(medicine_id: str):
 
     try:
         medicine_object_id = ObjectId(medicine_id)
@@ -118,7 +120,25 @@ def get_medicine_object_id(medicine_id: str):
             detail="Medicine not found"
         )
 
-    return medicine_object_id
+    # Check medicine expiry
+    expiry_date = date.fromisoformat(
+        medicine["expiry_date"]
+    )
+
+    if expiry_date < date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="Medicine has expired"
+        )
+
+    # Check medicine stock
+    if medicine["quantity"] <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Medicine is out of stock"
+        )
+
+    return medicine
 
 
 # Reusable prescription ID validation
@@ -199,9 +219,22 @@ def create_prescription(
         )
 
     # Validate medicine
-    medicine_object_id = get_medicine_object_id(
+    # This checks:
+    # 1. Medicine exists
+    # 2. Medicine is not expired
+    # 3. Medicine has stock available
+    medicine = get_available_medicine(
         prescription.medicine_id
     )
+
+    # Check requested quantity against available stock
+    if prescription.quantity > medicine["quantity"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Requested quantity is greater than available stock"
+        )
+
+    medicine_object_id = medicine["_id"]
 
     # Prepare prescription document
     prescription_data = {
@@ -209,11 +242,22 @@ def create_prescription(
         "doctor_id": doctor_object_id,
         "medical_record_id": medical_record_object_id,
         "medicine_id": medicine_object_id,
+        "quantity": prescription.quantity,
         "dosage": prescription.dosage,
         "frequency": prescription.frequency,
         "duration": prescription.duration,
         "instructions": prescription.instructions
     }
+
+    # Reduce medicine stock
+    medicines_collection.update_one(
+        {"_id": medicine_object_id},
+        {
+            "$inc": {
+                "quantity": -prescription.quantity
+            }
+        }
+    )
 
     # Insert prescription
     prescriptions_collection.insert_one(
@@ -458,11 +502,11 @@ def update_prescription(
     # Validate medicine ID if provided
     if "medicine_id" in update_data:
 
-        medicine_object_id = get_medicine_object_id(
+        medicine = get_available_medicine(
             update_data["medicine_id"]
         )
 
-        update_data["medicine_id"] = medicine_object_id
+        update_data["medicine_id"] = medicine["_id"]
 
     # Update only provided fields
     prescriptions_collection.update_one(

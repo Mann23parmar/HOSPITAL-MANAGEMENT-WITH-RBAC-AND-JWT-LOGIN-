@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, StrictStr
+from app.schemas.update_payload import UpdatePayload
 
 
 class PrescriptionCreate(BaseModel):
@@ -35,6 +36,12 @@ class PrescriptionCreate(BaseModel):
         examples=["66f789012345abcdef789012"]
     )
 
+    quantity: int = Field(
+        ...,
+        gt=0,
+        examples=[5]
+    )
+
     dosage: StrictStr = Field(
         ...,
         min_length=1,
@@ -64,7 +71,7 @@ class PrescriptionCreate(BaseModel):
     )
 
 
-class PrescriptionUpdate(BaseModel):
+class PrescriptionUpdate(UpdatePayload):
 
     patient_id: StrictStr | None = Field(
         default=None,

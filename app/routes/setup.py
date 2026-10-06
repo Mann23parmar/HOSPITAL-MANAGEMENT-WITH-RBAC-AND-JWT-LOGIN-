@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from pymongo.errors import DuplicateKeyError
+
 from app.schemas.setup import InitialAdminCreate
 from app.database.connection import users_collection
 from app.services.auth_service import hash_password
@@ -32,14 +34,20 @@ def create_initial_admin(admin: InitialAdminCreate):
         "password": hashed_password,
         "role": "admin",
         "is_active": True,
-        "created_at": datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+        "created_at": datetime.now(
+            ZoneInfo("Asia/Kolkata")
+        ).isoformat()
     }
 
-    users_collection.insert_one(user_data)
+    try:
+        users_collection.insert_one(user_data)
+
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=403,
+            detail="Initial admin setup has already been completed"
+        )
 
     return {
         "message": "Initial admin created successfully"
     }
-    
-    
-    
