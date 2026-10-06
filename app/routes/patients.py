@@ -11,6 +11,7 @@ from app.database.connection import (
 
 from app.core.rbac import require_role
 from app.schemas.patient import PatientCreate, PatientUpdate
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -68,8 +69,15 @@ def create_patient(
         current_user["user_id"]
     )
 
-    patients_collection.insert_one(
+    result = patients_collection.insert_one(
         patient_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="patients",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -223,6 +231,13 @@ def update_patient(
         }
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="patients",
+        record_id=str(patient_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Patient updated successfully"
     }
@@ -254,6 +269,13 @@ def delete_patient(
             status_code=404,
             detail="Patient not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="patients",
+        record_id=str(patient_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Patient deleted successfully"

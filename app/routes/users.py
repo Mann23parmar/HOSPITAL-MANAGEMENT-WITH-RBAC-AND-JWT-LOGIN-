@@ -5,6 +5,7 @@ from app.database.connection import users_collection
 from app.schemas.user import UserCreate, UserStatusUpdate
 from app.services.auth_service import get_current_user, hash_password
 from app.core.rbac import require_role
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter(
@@ -41,6 +42,13 @@ def create_user(
     }
 
     result = users_collection.insert_one(user_data)
+
+    create_audit_log(
+        action="CREATE",
+        collection="users",
+        record_id=str(result.inserted_id),
+        current_user=current_user
+    )
 
     return {
         "message": "User created successfully",
@@ -91,14 +99,21 @@ def update_user_status(
             detail="Admin user status cannot be changed"
         )
 
+    update_data = {"is_active": status.is_active}
+
     # Update status
     users_collection.update_one(
         {"_id": ObjectId(user_id)},
         {
-            "$set": {
-                "is_active": status.is_active
-            }
+            "$set": update_data
         }
+    )
+
+    create_audit_log(
+        action="UPDATE",
+        collection="users",
+        record_id=user_id,
+        current_user=current_user
     )
 
     return {

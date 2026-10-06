@@ -11,6 +11,7 @@ from app.database.connection import (
 
 from app.core.rbac import require_role
 from app.schemas.nurse import NurseCreate, NurseUpdate
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -129,8 +130,15 @@ def create_nurse(
     }
 
     # Insert nurse
-    nurses_collection.insert_one(
+    result = nurses_collection.insert_one(
         nurse_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="nurses",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -314,6 +322,13 @@ def update_nurse(
         {"$set": update_data}
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="nurses",
+        record_id=str(nurse_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Nurse updated successfully"
     }
@@ -367,10 +382,24 @@ def delete_nurse(
         }
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="users",
+        record_id=str(user_object_id),
+        current_user=current_user
+    )
+
     # Delete nurse profile
     nurses_collection.delete_one({
         "_id": nurse_object_id
     })
+
+    create_audit_log(
+        action="DELETE",
+        collection="nurses",
+        record_id=str(nurse_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Nurse deleted successfully"

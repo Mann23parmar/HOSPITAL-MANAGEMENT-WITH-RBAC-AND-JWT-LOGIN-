@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.database.connection import medicines_collection
 from app.core.rbac import require_role
 from app.schemas.medicine import MedicineCreate, MedicineUpdate
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -59,8 +60,15 @@ def create_medicine(
         medicine.expiry_date.isoformat()
     )
 
-    medicines_collection.insert_one(
+    result = medicines_collection.insert_one(
         medicine_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="medicines",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -181,6 +189,13 @@ def update_medicine(
         {"$set": update_data}
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="medicines",
+        record_id=str(medicine_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Medicine updated successfully"
     }
@@ -212,6 +227,13 @@ def delete_medicine(
             status_code=404,
             detail="Medicine not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="medicines",
+        record_id=str(medicine_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Medicine deleted successfully"

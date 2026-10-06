@@ -14,6 +14,7 @@ from app.schemas.patient_vitals import (
     PatientVitalsCreate,
     PatientVitalsUpdate
 )
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -127,8 +128,15 @@ def create_patient_vitals(
     }
 
     # Insert into MongoDB
-    patient_vitals_collection.insert_one(
+    result = patient_vitals_collection.insert_one(
         vitals_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="patient_vitals",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -272,6 +280,13 @@ def update_patient_vitals(
         {"$set": update_data}
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="patient_vitals",
+        record_id=str(vitals_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Patient vitals updated successfully"
     }
@@ -301,6 +316,13 @@ def delete_patient_vitals(
             status_code=404,
             detail="Patient vitals not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="patient_vitals",
+        record_id=str(vitals_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Patient vitals deleted successfully"

@@ -14,6 +14,7 @@ from app.schemas.medical_record import (
     MedicalRecordCreate,
     MedicalRecordUpdate
 )
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -156,8 +157,15 @@ def create_medical_record(
         "notes": record.notes
     }
 
-    medical_records_collection.insert_one(
+    result = medical_records_collection.insert_one(
         record_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="medical_records",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -417,6 +425,13 @@ def update_medical_record(
         {"$set": update_data}
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="medical_records",
+        record_id=str(record_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Medical record updated successfully"
     }
@@ -452,6 +467,13 @@ def delete_medical_record(
             status_code=404,
             detail="Medical record not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="medical_records",
+        record_id=str(record_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Medical record deleted successfully"

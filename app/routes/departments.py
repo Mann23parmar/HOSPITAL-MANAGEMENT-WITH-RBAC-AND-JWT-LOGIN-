@@ -8,6 +8,7 @@ from app.schemas.department import (
     DepartmentCreate,
     DepartmentUpdate
 )
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -50,8 +51,15 @@ def create_department(
     department_data = department.model_dump()
 
     # Insert department
-    departments_collection.insert_one(
+    result = departments_collection.insert_one(
         department_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="departments",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -146,6 +154,13 @@ def update_department(
         }
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="departments",
+        record_id=str(department_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Department updated successfully"
     }
@@ -174,6 +189,13 @@ def delete_department(
             status_code=404,
             detail="Department not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="departments",
+        record_id=str(department_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Department deleted successfully"

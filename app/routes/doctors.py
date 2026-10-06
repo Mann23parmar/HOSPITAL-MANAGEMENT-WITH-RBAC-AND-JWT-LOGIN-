@@ -11,6 +11,7 @@ from app.database.connection import (
 
 from app.core.rbac import require_role
 from app.schemas.doctor import DoctorCreate, DoctorUpdate
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -143,8 +144,15 @@ def create_doctor(
         "phone": doctor.phone
     }
 
-    doctors_collection.insert_one(
+    result = doctors_collection.insert_one(
         doctor_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="doctors",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -332,6 +340,13 @@ def update_doctor(
         }
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="doctors",
+        record_id=str(doctor_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Doctor updated successfully"
     }
@@ -382,9 +397,23 @@ def delete_doctor(
         }
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="users",
+        record_id=str(user_object_id),
+        current_user=current_user
+    )
+
     # Delete doctor profile
     doctors_collection.delete_one(
         {"_id": doctor_object_id}
+    )
+
+    create_audit_log(
+        action="DELETE",
+        collection="doctors",
+        record_id=str(doctor_object_id),
+        current_user=current_user
     )
 
     return {

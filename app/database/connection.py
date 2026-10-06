@@ -19,6 +19,7 @@ medical_records_collection = db["medical_records"]
 prescriptions_collection = db["prescriptions"]
 medicines_collection = db["medicines"]
 patient_vitals_collection = db["patient_vitals"]
+audit_logs_collection = db["audit_logs"]
 
 #allow only one admin to be created
 users_collection.create_index(

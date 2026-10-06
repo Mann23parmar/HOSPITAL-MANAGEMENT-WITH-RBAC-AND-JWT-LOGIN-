@@ -14,6 +14,7 @@ from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentUpdate
 )
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -119,8 +120,15 @@ def create_appointment(
         "status": "scheduled"
     }
 
-    appointments_collection.insert_one(
+    result = appointments_collection.insert_one(
         appointment_data
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="appointments",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -337,6 +345,13 @@ def update_appointment(
         {"$set": update_data}
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="appointments",
+        record_id=str(appointment_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Appointment updated successfully"
     }
@@ -366,6 +381,13 @@ def delete_appointment(
             status_code=404,
             detail="Appointment not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="appointments",
+        record_id=str(appointment_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Appointment deleted successfully"

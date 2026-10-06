@@ -6,6 +6,7 @@ from pymongo.errors import DuplicateKeyError
 from app.schemas.setup import InitialAdminCreate
 from app.database.connection import users_collection
 from app.services.auth_service import hash_password
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -40,13 +41,20 @@ def create_initial_admin(admin: InitialAdminCreate):
     }
 
     try:
-        users_collection.insert_one(user_data)
+        result = users_collection.insert_one(user_data)
 
     except DuplicateKeyError:
         raise HTTPException(
             status_code=403,
             detail="Initial admin setup has already been completed"
         )
+
+    create_audit_log(
+        action="CREATE",
+        collection="users",
+        record_id=str(result.inserted_id),
+        current_user={"email": admin.email, "role": "admin"}
+    )
 
     return {
         "message": "Initial admin created successfully"

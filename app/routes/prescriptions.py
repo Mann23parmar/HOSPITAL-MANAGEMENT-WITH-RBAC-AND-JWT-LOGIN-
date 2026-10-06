@@ -20,6 +20,7 @@ from app.schemas.prescription import (
     PrescriptionCreate,
     PrescriptionUpdate
 )
+from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
@@ -260,8 +261,22 @@ def create_prescription(
     )
 
     # Insert prescription
-    prescriptions_collection.insert_one(
+    result = prescriptions_collection.insert_one(
         prescription_data
+    )
+
+    create_audit_log(
+        action="UPDATE",
+        collection="medicines",
+        record_id=str(medicine_object_id),
+        current_user=current_user
+    )
+
+    create_audit_log(
+        action="CREATE",
+        collection="prescriptions",
+        record_id=str(result.inserted_id),
+        current_user=current_user
     )
 
     return {
@@ -514,6 +529,13 @@ def update_prescription(
         {"$set": update_data}
     )
 
+    create_audit_log(
+        action="UPDATE",
+        collection="prescriptions",
+        record_id=str(prescription_object_id),
+        current_user=current_user
+    )
+
     return {
         "message": "Prescription updated successfully"
     }
@@ -543,6 +565,13 @@ def delete_prescription(
             status_code=404,
             detail="Prescription not found"
         )
+
+    create_audit_log(
+        action="DELETE",
+        collection="prescriptions",
+        record_id=str(prescription_object_id),
+        current_user=current_user
+    )
 
     return {
         "message": "Prescription deleted successfully"
