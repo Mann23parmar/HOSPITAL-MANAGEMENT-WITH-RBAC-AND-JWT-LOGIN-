@@ -15,3 +15,9 @@ class InitialAdminCreate(BaseModel):
         max_length=12,
         examples=["Admin@12345"]
     )
+
+    invitation_token: StrictStr = Field(
+        ...,
+        min_length=20,
+        examples=["Paste the token from your invitation link"]
+    )

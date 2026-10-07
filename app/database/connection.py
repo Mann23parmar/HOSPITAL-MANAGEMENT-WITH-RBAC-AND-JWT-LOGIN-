@@ -21,6 +21,9 @@ medicines_collection = db["medicines"]
 patient_vitals_collection = db["patient_vitals"]
 audit_logs_collection = db["audit_logs"]
 revoked_tokens_collection = db["revoked_tokens"]
+admin_invitations_collection = db["admin_invitations"]
+admin_invitations_collection.create_index("token_hash", unique=True)
+admin_invitations_collection.create_index("expires_at", expireAfterSeconds=0)
 
 # Revoked access tokens remain blocked until they expire, then MongoDB removes them.
 revoked_tokens_collection.create_index("jti", unique=True)
