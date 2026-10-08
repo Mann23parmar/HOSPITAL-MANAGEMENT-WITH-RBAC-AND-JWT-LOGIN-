@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field, StrictStr, field_validator
 
 
@@ -14,6 +16,11 @@ class InitialAdminCreate(BaseModel):
         min_length=8,
         max_length=15,
     )
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, email: Any) -> Any:
+        return email.strip().lower() if isinstance(email, str) else email
 
     @field_validator("password")
     @classmethod

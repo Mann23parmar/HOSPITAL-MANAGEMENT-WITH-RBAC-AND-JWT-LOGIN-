@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
+from pymongo.collation import Collation
 
 from app.database.connection import users_collection
 from app.schemas.user import UserCreate, UserStatusUpdate
@@ -25,7 +26,7 @@ def create_user(
     # Check if email already exists
     existing_user = users_collection.find_one({
         "email": user.email
-    })
+    }, collation=Collation(locale="en", strength=2))
 
     if existing_user:
         raise HTTPException(

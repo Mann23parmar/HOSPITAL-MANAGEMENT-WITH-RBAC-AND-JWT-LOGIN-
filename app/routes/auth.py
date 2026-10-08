@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.collation import Collation
 
 from app.schemas.user import UserLogin
 from app.database.connection import users_collection, revoked_tokens_collection
@@ -13,16 +14,11 @@ router = APIRouter()
 
 @router.post("/login")
 def login(user: UserLogin):
-    email = user.email.strip()
-    if email != email.lower():
-        raise HTTPException(
-            status_code=400,
-            detail="Email must use lowercase letters",
-        )
+    email = user.email
 
     stored_user = users_collection.find_one({
         "email": email
-    })
+    }, collation=Collation(locale="en", strength=2))
 
     if stored_user is None:
         raise HTTPException(

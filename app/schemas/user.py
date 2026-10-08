@@ -1,5 +1,6 @@
 
 import re
+from typing import Any
 
 from pydantic import BaseModel, Field, StrictStr, field_validator
 from enum import Enum
@@ -29,12 +30,10 @@ class UserCreate(BaseModel):
         examples=["doctor@example.com"]
     )
 
-    @field_validator("email")
+    @field_validator("email", mode="before")
     @classmethod
-    def require_lowercase_email(cls, email: str) -> str:
-        if email != email.lower():
-            raise ValueError("Email must use lowercase letters")
-        return email
+    def normalize_email(cls, email: Any) -> Any:
+        return email.strip().lower() if isinstance(email, str) else email
 
     password: StrictStr = Field(
         ...,
@@ -69,16 +68,17 @@ class UserLogin(BaseModel):
         examples=["doctor@example.com"]
     )
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, email: Any) -> Any:
+        return email.strip().lower() if isinstance(email, str) else email
+
     @field_validator("email")
     @classmethod
-    def validate_lowercase_email(cls, email: str) -> str:
-        email = email.strip()
-        if email != email.lower():
-            raise ValueError("Email must use lowercase letters")
-
+    def validate_email_format(cls, email: str) -> str:
         email_pattern = r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"
         if not re.fullmatch(email_pattern, email):
-            raise ValueError("Enter a valid lowercase email address, such as abc@gmail.com")
+            raise ValueError("Enter a valid email address, such as abc@gmail.com")
         return email
 
     password: StrictStr = Field(
