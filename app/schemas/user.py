@@ -29,6 +29,13 @@ class UserCreate(BaseModel):
         examples=["doctor@example.com"]
     )
 
+    @field_validator("email")
+    @classmethod
+    def require_lowercase_email(cls, email: str) -> str:
+        if email != email.lower():
+            raise ValueError("Email must use lowercase letters")
+        return email
+
     password: StrictStr = Field(
         ...,
         min_length=8,
