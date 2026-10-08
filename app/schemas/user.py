@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel, Field, StrictStr
+from pydantic import BaseModel, Field, StrictStr, field_validator
 from enum import Enum
 
 
@@ -30,9 +30,22 @@ class UserCreate(BaseModel):
     password: StrictStr = Field(
         ...,
         min_length=8,
-        max_length=12,
-        examples=["Doctor@123"]
+        max_length=15,
     )
+
+    @field_validator("password")
+    @classmethod
+    def enforce_password_policy(cls, password: str) -> str:
+        if not any(character.isalpha() for character in password):
+            raise ValueError("Password must contain at least one letter")
+        if not any(character.isupper() for character in password):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(
+            not character.isalnum() and not character.isspace()
+            for character in password
+        ):
+            raise ValueError("Password must contain at least one special character")
+        return password
 
     role: StaffRole
 
@@ -49,9 +62,9 @@ class UserLogin(BaseModel):
 
     password: StrictStr = Field(
         ...,
-        min_length=8,
-        max_length=12,
-        examples=["Doctor@123"])
+        min_length=1,
+        max_length=72,
+    )
 
 
 # Admin uses this schema to activate/deactivate a user

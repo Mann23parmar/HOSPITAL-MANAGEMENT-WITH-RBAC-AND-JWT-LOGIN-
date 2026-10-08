@@ -13,9 +13,15 @@ router = APIRouter()
 
 @router.post("/login")
 def login(user: UserLogin):
+    email = user.email.strip()
+    if email != email.lower():
+        raise HTTPException(
+            status_code=400,
+            detail="Email must use lowercase letters",
+        )
 
     stored_user = users_collection.find_one({
-        "email": user.email.strip().lower()
+        "email": email
     })
 
     if stored_user is None:
