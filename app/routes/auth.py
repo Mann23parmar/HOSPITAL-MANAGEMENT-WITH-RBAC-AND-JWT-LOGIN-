@@ -15,7 +15,7 @@ router = APIRouter()
 def login(user: UserLogin):
 
     stored_user = users_collection.find_one({
-        "email": user.email
+        "email": user.email.strip().lower()
     })
 
     if stored_user is None:
