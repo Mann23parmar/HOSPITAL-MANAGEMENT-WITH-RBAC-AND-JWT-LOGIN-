@@ -1,4 +1,6 @@
 
+import re
+
 from pydantic import BaseModel, Field, StrictStr, field_validator
 from enum import Enum
 
@@ -59,6 +61,18 @@ class UserLogin(BaseModel):
         max_length=100,
         examples=["doctor@example.com"]
     )
+
+    @field_validator("email")
+    @classmethod
+    def validate_lowercase_email(cls, email: str) -> str:
+        email = email.strip()
+        if email != email.lower():
+            raise ValueError("Email must use lowercase letters")
+
+        email_pattern = r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"
+        if not re.fullmatch(email_pattern, email):
+            raise ValueError("Enter a valid lowercase email address, such as abc@gmail.com")
+        return email
 
     password: StrictStr = Field(
         ...,
