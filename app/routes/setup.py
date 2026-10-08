@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pymongo import ReturnDocument
+from pymongo.collation import Collation
 from pymongo.errors import DuplicateKeyError
 
 from app.database.connection import admin_invitations_collection, users_collection
@@ -96,8 +97,16 @@ def create_initial_admin(admin: InitialAdminCreate):
             detail="Initial admin setup has already been completed",
         )
 
-    email = admin.email.strip().lower()
+    email = admin.email
     now = datetime.now(timezone.utc)
+
+    existing_user = users_collection.find_one(
+        {"email": email},
+        collation=Collation(locale="en", strength=2),
+    )
+    if existing_user:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
     token_hash = hashlib.sha256(admin.invitation_token.encode("utf-8")).hexdigest()
     invitation = admin_invitations_collection.find_one_and_update(
         {
@@ -117,6 +126,7 @@ def create_initial_admin(admin: InitialAdminCreate):
 
     user_data = {
         "email": email,
+        "email_normalized": email,
         "password": hash_password(admin.password),
         "role": "admin",
         "is_active": True,
@@ -125,7 +135,9 @@ def create_initial_admin(admin: InitialAdminCreate):
 
     try:
         result = users_collection.insert_one(user_data)
-    except DuplicateKeyError:
+    except DuplicateKeyError as error:
+        if "email_normalized" in (error.details or {}).get("keyPattern", {}):
+            raise HTTPException(status_code=409, detail="Email already registered")
         raise HTTPException(
             status_code=403,
             detail="Initial admin setup has already been completed",

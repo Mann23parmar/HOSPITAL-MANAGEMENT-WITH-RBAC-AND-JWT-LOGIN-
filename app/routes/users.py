@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
 from pymongo.collation import Collation
+from pymongo.errors import DuplicateKeyError
 
 from app.database.connection import users_collection
 from app.schemas.user import UserCreate, UserStatusUpdate
@@ -23,26 +24,33 @@ def create_user(
     user: UserCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    # Check if email already exists
-    existing_user = users_collection.find_one({
-        "email": user.email
-    }, collation=Collation(locale="en", strength=2))
-
+    # Check existing legacy and normalized records before creating the user.
+    existing_user = users_collection.find_one(
+        {"email": user.email},
+        collation=Collation(locale="en", strength=2),
+    )
     if existing_user:
         raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
+            status_code=409,
+            detail="Email already registered",
         )
 
-    # Create user
     user_data = {
         "email": user.email,
+        "email_normalized": user.email,
         "password": hash_password(user.password),
         "role": user.role.value,
         "is_active": True
     }
 
-    result = users_collection.insert_one(user_data)
+    try:
+        result = users_collection.insert_one(user_data)
+    except DuplicateKeyError:
+        # The unique index resolves races where concurrent requests pass the lookup.
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered",
+        )
 
     create_audit_log(
         action="CREATE",

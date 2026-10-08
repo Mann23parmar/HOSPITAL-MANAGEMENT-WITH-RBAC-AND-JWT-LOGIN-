@@ -35,3 +35,12 @@ users_collection.create_index(
     unique=True,
     partialFilterExpression={"role": "admin"}
 )
+
+# New user documents store a canonical email key. The partial index allows
+# existing documents to remain in place while enforcing uniqueness for new writes.
+users_collection.create_index(
+    [("email_normalized", 1)],
+    unique=True,
+    partialFilterExpression={"email_normalized": {"$type": "string"}},
+    name="unique_normalized_user_email",
+)

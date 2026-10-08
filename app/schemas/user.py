@@ -1,9 +1,28 @@
 
-import re
 from typing import Any
 
 from pydantic import BaseModel, Field, StrictStr, field_validator
 from enum import Enum
+
+
+def normalize_and_validate_email(email: Any) -> Any:
+    if not isinstance(email, str):
+        return email
+
+    email = email.strip().lower()
+    local_part, separator, domain = email.partition("@")
+    if (
+        not separator
+        or not local_part
+        or "@" in domain
+        or "." not in domain
+        or domain.startswith(".")
+        or domain.endswith(".")
+        or any(character.isspace() for character in email)
+    ):
+        raise ValueError("Enter a valid email address, such as abc@gmail.com")
+
+    return email
 
 
 class Role(str, Enum):
@@ -33,7 +52,7 @@ class UserCreate(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, email: Any) -> Any:
-        return email.strip().lower() if isinstance(email, str) else email
+        return normalize_and_validate_email(email)
 
     password: StrictStr = Field(
         ...,
@@ -71,15 +90,7 @@ class UserLogin(BaseModel):
     @field_validator("email", mode="before")
     @classmethod
     def normalize_email(cls, email: Any) -> Any:
-        return email.strip().lower() if isinstance(email, str) else email
-
-    @field_validator("email")
-    @classmethod
-    def validate_email_format(cls, email: str) -> str:
-        email_pattern = r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+"
-        if not re.fullmatch(email_pattern, email):
-            raise ValueError("Enter a valid email address, such as abc@gmail.com")
-        return email
+        return normalize_and_validate_email(email)
 
     password: StrictStr = Field(
         ...,

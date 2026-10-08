@@ -8,6 +8,7 @@ from urllib.parse import quote, urlsplit
 
 from app.core.config import settings
 from app.database.connection import admin_invitations_collection, users_collection
+from app.schemas.user import normalize_and_validate_email
 
 #check weather email is provided in the command line arguments or not
 if len(sys.argv) != 2:
@@ -15,11 +16,9 @@ if len(sys.argv) != 2:
     sys.exit(1)
     
     
-#convert email to lowercase and remove whitespace
-email = sys.argv[1].strip().lower()
-
-#validate the email address
-if "@" not in email or "." not in email.split("@")[-1]:
+try:
+    email = normalize_and_validate_email(sys.argv[1])
+except ValueError:
     print("Please provide a valid email address.")
     sys.exit(1)
 
