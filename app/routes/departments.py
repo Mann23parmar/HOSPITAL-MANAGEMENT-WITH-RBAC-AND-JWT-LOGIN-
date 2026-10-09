@@ -1,7 +1,6 @@
-from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.authorization import get_object_id
 from app.database.connection import departments_collection
 from app.core.rbac import require_role
 from app.schemas.department import (
@@ -15,18 +14,6 @@ router = APIRouter()
 
 
 # Reusable department ID validation
-def get_department_object_id(department_id: str):
-
-    try:
-        return ObjectId(department_id)
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid department ID"
-        )
-
-
 # Create department
 @router.post("/departments", status_code=201)
 def create_department(
@@ -101,9 +88,7 @@ def update_department(
 ):
 
     # Validate department ID
-    department_object_id = get_department_object_id(
-        department_id
-    )
+    department_object_id = get_object_id(department_id, "department")
 
     # Check department exists
     existing_department = departments_collection.find_one(
@@ -176,9 +161,7 @@ def delete_department(
 ):
 
     # Validate department ID
-    department_object_id = get_department_object_id(
-        department_id
-    )
+    department_object_id = get_object_id(department_id, "department")
 
     result = departments_collection.delete_one(
         {"_id": department_object_id}

@@ -1,8 +1,11 @@
 from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.authorization import get_current_doctor
+from app.core.authorization import (
+    get_current_doctor,
+    get_existing_object_id,
+    get_object_id,
+)
 from app.database.connection import (
     appointments_collection,
     patients_collection,
@@ -20,70 +23,6 @@ from app.services.audit_service import create_audit_log
 router = APIRouter()
 
 
-# Reusable patient validation
-def get_patient_object_id(patient_id: str):
-
-    try:
-        patient_object_id = ObjectId(patient_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
-    patient = patients_collection.find_one(
-        {"_id": patient_object_id}
-    )
-
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
-        )
-
-    return patient_object_id
-
-
-# Reusable doctor validation
-def get_doctor_object_id(doctor_id: str):
-
-    try:
-        doctor_object_id = ObjectId(doctor_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
-        )
-
-    doctor = doctors_collection.find_one(
-        {"_id": doctor_object_id}
-    )
-
-    if not doctor:
-        raise HTTPException(
-            status_code=404,
-            detail="Doctor not found"
-        )
-
-    return doctor_object_id
-
-
-# Reusable appointment ID validation
-def get_appointment_object_id(appointment_id: str):
-
-    try:
-        appointment_object_id = ObjectId(
-            appointment_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid appointment ID"
-        )
-
-    return appointment_object_id
-
-
 # Create appointment
 @router.post("/appointments", status_code=201)
 def create_appointment(
@@ -94,13 +33,13 @@ def create_appointment(
 ):
 
     # Validate patient
-    patient_object_id = get_patient_object_id(
-        appointment.patient_id
+    patient_object_id = get_existing_object_id(
+        appointment.patient_id, patients_collection, "patient"
     )
 
     # Validate doctor
-    doctor_object_id = get_doctor_object_id(
-        appointment.doctor_id
+    doctor_object_id = get_existing_object_id(
+        appointment.doctor_id, doctors_collection, "doctor"
     )
 
     # Prepare appointment data
@@ -235,9 +174,7 @@ def update_appointment(
 ):
 
     # Validate appointment ID
-    appointment_object_id = get_appointment_object_id(
-        appointment_id
-    )
+    appointment_object_id = get_object_id(appointment_id, "appointment")
 
     # Check appointment exists
     existing_appointment = appointments_collection.find_one(
@@ -282,8 +219,8 @@ def update_appointment(
     # Validate patient ID if provided
     if "patient_id" in update_data:
 
-        patient_object_id = get_patient_object_id(
-            update_data["patient_id"]
+        patient_object_id = get_existing_object_id(
+            update_data["patient_id"], patients_collection, "patient"
         )
 
         update_data["patient_id"] = patient_object_id
@@ -291,8 +228,8 @@ def update_appointment(
     # Validate doctor ID if provided
     if "doctor_id" in update_data:
 
-        doctor_object_id = get_doctor_object_id(
-            update_data["doctor_id"]
+        doctor_object_id = get_existing_object_id(
+            update_data["doctor_id"], doctors_collection, "doctor"
         )
 
         # Doctor cannot change appointment
@@ -367,9 +304,7 @@ def delete_appointment(
 ):
 
     # Validate appointment ID
-    appointment_object_id = get_appointment_object_id(
-        appointment_id
-    )
+    appointment_object_id = get_object_id(appointment_id, "appointment")
 
     result = appointments_collection.delete_one(
         {"_id": appointment_object_id}

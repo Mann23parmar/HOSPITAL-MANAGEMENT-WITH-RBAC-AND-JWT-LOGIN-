@@ -25,6 +25,19 @@ def normalize_and_validate_email(email: Any) -> Any:
     return email
 
 
+def validate_password_policy(password: str) -> str:
+    if not any(character.isalpha() for character in password):
+        raise ValueError("Password must contain at least one letter")
+    if not any(character.isupper() for character in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(
+        not character.isalnum() and not character.isspace()
+        for character in password
+    ):
+        raise ValueError("Password must contain at least one special character")
+    return password
+
+
 class Role(str, Enum):
     ADMIN = "admin"
     DOCTOR = "doctor"
@@ -63,16 +76,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def enforce_password_policy(cls, password: str) -> str:
-        if not any(character.isalpha() for character in password):
-            raise ValueError("Password must contain at least one letter")
-        if not any(character.isupper() for character in password):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(
-            not character.isalnum() and not character.isspace()
-            for character in password
-        ):
-            raise ValueError("Password must contain at least one special character")
-        return password
+        return validate_password_policy(password)
 
     role: StaffRole
 

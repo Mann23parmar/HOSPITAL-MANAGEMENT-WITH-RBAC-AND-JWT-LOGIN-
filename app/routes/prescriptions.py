@@ -4,7 +4,11 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.authorization import get_current_doctor
+from app.core.authorization import (
+    get_current_doctor,
+    get_existing_object_id,
+    get_object_id,
+)
 
 from app.database.connection import (
     prescriptions_collection,
@@ -26,78 +30,11 @@ from app.services.audit_service import create_audit_log
 router = APIRouter()
 
 
-# Reusable patient validation
-def get_patient_object_id(patient_id: str):
-
-    try:
-        patient_object_id = ObjectId(patient_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
-    patient = patients_collection.find_one({
-        "_id": patient_object_id
-    })
-
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
-        )
-
-    return patient_object_id
-
-
-# Reusable doctor validation
-def get_doctor_object_id(doctor_id: str):
-
-    try:
-        doctor_object_id = ObjectId(doctor_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
-        )
-
-    doctor = doctors_collection.find_one({
-        "_id": doctor_object_id
-    })
-
-    if not doctor:
-        raise HTTPException(
-            status_code=404,
-            detail="Doctor not found"
-        )
-
-    return doctor_object_id
-
-
 # Reusable medical record validation
 def get_medical_record_object_id(medical_record_id: str):
-
-    try:
-        medical_record_object_id = ObjectId(
-            medical_record_id
-        )
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid medical record ID"
-        )
-
-    medical_record = medical_records_collection.find_one({
-        "_id": medical_record_object_id
-    })
-
-    if not medical_record:
-        raise HTTPException(
-            status_code=404,
-            detail="Medical record not found"
-        )
-
-    return medical_record_object_id
+    return get_existing_object_id(
+        medical_record_id, medical_records_collection, "medical record"
+    )
 
 
 # Reusable medicine validation
@@ -144,14 +81,7 @@ def get_available_medicine(medicine_id: str):
 
 # Reusable prescription ID validation
 def get_prescription_object_id(prescription_id: str):
-
-    try:
-        return ObjectId(prescription_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid prescription ID"
-        )
+    return get_object_id(prescription_id, "prescription")
 
 
 # Create prescription
@@ -186,13 +116,13 @@ def create_prescription(
             )
 
     # Validate patient
-    patient_object_id = get_patient_object_id(
-        prescription.patient_id
+    patient_object_id = get_existing_object_id(
+        prescription.patient_id, patients_collection, "patient"
     )
 
     # Validate doctor
-    doctor_object_id = get_doctor_object_id(
-        prescription.doctor_id
+    doctor_object_id = get_existing_object_id(
+        prescription.doctor_id, doctors_collection, "doctor"
     )
 
     # Validate medical record
@@ -437,8 +367,8 @@ def update_prescription(
     # Validate patient ID if provided
     if "patient_id" in update_data:
 
-        patient_object_id = get_patient_object_id(
-            update_data["patient_id"]
+        patient_object_id = get_existing_object_id(
+            update_data["patient_id"], patients_collection, "patient"
         )
 
         update_data["patient_id"] = patient_object_id
@@ -450,8 +380,8 @@ def update_prescription(
     # Validate doctor ID if provided
     if "doctor_id" in update_data:
 
-        doctor_object_id = get_doctor_object_id(
-            update_data["doctor_id"]
+        doctor_object_id = get_existing_object_id(
+            update_data["doctor_id"], doctors_collection, "doctor"
         )
 
         # Doctor cannot assign prescription

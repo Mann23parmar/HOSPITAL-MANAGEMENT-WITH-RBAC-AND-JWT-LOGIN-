@@ -1,6 +1,4 @@
 
-from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.database.connection import (
@@ -9,6 +7,11 @@ from app.database.connection import (
     departments_collection
 )
 
+from app.core.authorization import (
+    get_existing_object_id,
+    get_object_id,
+    get_user_object_id_for_role,
+)
 from app.core.rbac import require_role
 from app.schemas.doctor import DoctorCreate, DoctorUpdate
 from app.services.audit_service import create_audit_log
@@ -18,79 +21,8 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------
-# Reusable helper: Validate doctor user
-# ---------------------------------------------------------
-
-def get_doctor_user_object_id(user_id: str):
-
-    try:
-        user_object_id = ObjectId(user_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid user ID"
-        )
-
-    user = users_collection.find_one(
-        {"_id": user_object_id}
-    )
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-    if user["role"] != "doctor":
-        raise HTTPException(
-            status_code=400,
-            detail="Selected user does not have doctor role"
-        )
-
-    return user_object_id
-
-
-# ---------------------------------------------------------
-# Reusable helper: Validate department
-# ---------------------------------------------------------
-
-def get_department_object_id(department_id: str):
-
-    try:
-        department_object_id = ObjectId(department_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid department ID"
-        )
-
-    department = departments_collection.find_one(
-        {"_id": department_object_id}
-    )
-
-    if not department:
-        raise HTTPException(
-            status_code=404,
-            detail="Department not found"
-        )
-
-    return department_object_id
-
-
-# ---------------------------------------------------------
 # Reusable helper: Validate doctor ID
 # ---------------------------------------------------------
-
-def get_doctor_object_id(doctor_id: str):
-
-    try:
-        return ObjectId(doctor_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
-        )
-
 
 # ---------------------------------------------------------
 # Create doctor
@@ -105,9 +37,7 @@ def create_doctor(
 ):
 
     # Validate user
-    user_object_id = get_doctor_user_object_id(
-        doctor.user_id
-    )
+    user_object_id = get_user_object_id_for_role(doctor.user_id, "doctor")
 
     # Check if this user already has a doctor profile
     existing_doctor = doctors_collection.find_one(
@@ -121,8 +51,8 @@ def create_doctor(
         )
 
     # Validate department
-    department_object_id = get_department_object_id(
-        doctor.department_id
+    department_object_id = get_existing_object_id(
+        doctor.department_id, departments_collection, "department"
     )
 
     # Check duplicate phone
@@ -251,9 +181,7 @@ def update_doctor(
 ):
 
     # Validate doctor ID
-    doctor_object_id = get_doctor_object_id(
-        doctor_id
-    )
+    doctor_object_id = get_object_id(doctor_id, "doctor")
 
     # Check doctor exists
     existing_doctor = doctors_collection.find_one(
@@ -281,8 +209,8 @@ def update_doctor(
     # Validate user_id only if provided
     if "user_id" in update_data:
 
-        user_object_id = get_doctor_user_object_id(
-            update_data["user_id"]
+        user_object_id = get_user_object_id_for_role(
+            update_data["user_id"], "doctor"
         )
 
         # Check if another doctor already uses this user
@@ -306,8 +234,8 @@ def update_doctor(
     # Validate department_id only if provided
     if "department_id" in update_data:
 
-        department_object_id = get_department_object_id(
-            update_data["department_id"]
+        department_object_id = get_existing_object_id(
+            update_data["department_id"], departments_collection, "department"
         )
 
         update_data["department_id"] = (
@@ -369,9 +297,7 @@ def delete_doctor(
 ):
 
     # Validate doctor ID
-    doctor_object_id = get_doctor_object_id(
-        doctor_id
-    )
+    doctor_object_id = get_object_id(doctor_id, "doctor")
 
     # Find doctor
     doctor = doctors_collection.find_one(

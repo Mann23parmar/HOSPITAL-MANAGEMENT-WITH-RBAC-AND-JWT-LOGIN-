@@ -1,8 +1,7 @@
 from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.authorization import get_current_doctor
+from app.core.authorization import get_current_doctor, get_object_id
 
 from app.database.connection import (
     patients_collection,
@@ -20,18 +19,6 @@ router = APIRouter()
 # ---------------------------------------------------------
 # Reusable helper: Validate patient ID
 # ---------------------------------------------------------
-
-def get_patient_object_id(patient_id: str):
-
-    try:
-        return ObjectId(patient_id)
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
 
 # ---------------------------------------------------------
 # Create patient
@@ -171,9 +158,7 @@ def update_patient(
 ):
 
     # Validate patient ID
-    patient_object_id = get_patient_object_id(
-        patient_id
-    )
+    patient_object_id = get_object_id(patient_id, "patient")
 
     # Check patient exists
     existing_patient = patients_collection.find_one(
@@ -256,9 +241,7 @@ def delete_patient(
 ):
 
     # Validate patient ID
-    patient_object_id = get_patient_object_id(
-        patient_id
-    )
+    patient_object_id = get_object_id(patient_id, "patient")
 
     result = patients_collection.delete_one(
         {"_id": patient_object_id}

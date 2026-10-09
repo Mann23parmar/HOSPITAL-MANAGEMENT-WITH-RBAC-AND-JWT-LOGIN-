@@ -2,7 +2,10 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.authorization import get_current_doctor
+from app.core.authorization import (
+    get_current_doctor,
+    get_existing_object_id,
+)
 from app.database.connection import (
     medical_records_collection,
     patients_collection,
@@ -24,70 +27,10 @@ router = APIRouter()
 # Reusable validation functions
 # =========================================================
 
-def get_patient_object_id(patient_id: str):
-    try:
-        patient_object_id = ObjectId(patient_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
-    patient = patients_collection.find_one(
-        {"_id": patient_object_id}
-    )
-
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
-        )
-
-    return patient_object_id
-
-
-def get_doctor_object_id(doctor_id: str):
-    try:
-        doctor_object_id = ObjectId(doctor_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid doctor ID"
-        )
-
-    doctor = doctors_collection.find_one(
-        {"_id": doctor_object_id}
-    )
-
-    if not doctor:
-        raise HTTPException(
-            status_code=404,
-            detail="Doctor not found"
-        )
-
-    return doctor_object_id
-
-
 def get_appointment_object_id(appointment_id: str):
-    try:
-        appointment_object_id = ObjectId(appointment_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid appointment ID"
-        )
-
-    appointment = appointments_collection.find_one(
-        {"_id": appointment_object_id}
+    return get_existing_object_id(
+        appointment_id, appointments_collection, "appointment"
     )
-
-    if not appointment:
-        raise HTTPException(
-            status_code=404,
-            detail="Appointment not found"
-        )
-
-    return appointment_object_id
 
 
 # =========================================================
@@ -103,13 +46,13 @@ def create_medical_record(
 ):
 
     # Validate patient
-    patient_object_id = get_patient_object_id(
-        record.patient_id
+    patient_object_id = get_existing_object_id(
+        record.patient_id, patients_collection, "patient"
     )
 
     # Validate doctor
-    doctor_object_id = get_doctor_object_id(
-        record.doctor_id
+    doctor_object_id = get_existing_object_id(
+        record.doctor_id, doctors_collection, "doctor"
     )
 
     # Validate appointment
@@ -334,8 +277,8 @@ def update_medical_record(
 
     if "patient_id" in update_data:
 
-        patient_object_id = get_patient_object_id(
-            update_data["patient_id"]
+        patient_object_id = get_existing_object_id(
+            update_data["patient_id"], patients_collection, "patient"
         )
 
         update_data["patient_id"] = patient_object_id
@@ -350,8 +293,8 @@ def update_medical_record(
 
     if "doctor_id" in update_data:
 
-        doctor_object_id = get_doctor_object_id(
-            update_data["doctor_id"]
+        doctor_object_id = get_existing_object_id(
+            update_data["doctor_id"], doctors_collection, "doctor"
         )
 
         # Doctor cannot assign record to another doctor

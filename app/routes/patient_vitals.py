@@ -10,7 +10,7 @@ from app.database.connection import (
 )
 
 from app.core.rbac import require_role
-from app.core.authorization import get_current_nurse
+from app.core.authorization import get_current_nurse, get_existing_object_id
 from app.schemas.patient_vitals import (
     PatientVitalsCreate,
     PatientVitalsUpdate
@@ -19,30 +19,6 @@ from app.services.audit_service import create_audit_log
 
 
 router = APIRouter()
-
-
-# Reusable patient validation
-def get_patient_object_id(patient_id: str):
-
-    try:
-        patient_object_id = ObjectId(patient_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid patient ID"
-        )
-
-    patient = patients_collection.find_one({
-        "_id": patient_object_id
-    })
-
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found"
-        )
-
-    return patient_object_id
 
 
 # Reusable nurse validation
@@ -109,8 +85,8 @@ def create_patient_vitals(
 ):
 
     # Validate patient
-    patient_object_id = get_patient_object_id(
-        vitals.patient_id
+    patient_object_id = get_existing_object_id(
+        vitals.patient_id, patients_collection, "patient"
     )
 
     # Nurses can only record vitals under their own profile. Admins can
@@ -281,8 +257,8 @@ def update_patient_vitals(
     # Validate patient ID if provided
     if "patient_id" in update_data:
 
-        patient_object_id = get_patient_object_id(
-            update_data["patient_id"]
+        patient_object_id = get_existing_object_id(
+            update_data["patient_id"], patients_collection, "patient"
         )
 
         update_data["patient_id"] = patient_object_id
