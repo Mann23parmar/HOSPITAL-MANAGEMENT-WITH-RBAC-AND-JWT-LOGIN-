@@ -1,11 +1,19 @@
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
-from app.core.authorization import get_current_doctor, get_object_id
+from app.core.authorization import (
+    get_current_doctor,
+    get_object_id,
+    without_pending_references,
+)
 
 from app.database.connection import (
     patients_collection,
-    appointments_collection
+    appointments_collection,
+    medical_records_collection,
+    prescriptions_collection,
+    patient_vitals_collection,
 )
 
 from app.core.rbac import require_role
@@ -56,9 +64,13 @@ def create_patient(
         current_user["user_id"]
     )
 
-    result = patients_collection.insert_one(
-        patient_data
-    )
+    try:
+        result = patients_collection.insert_one(patient_data)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Patient with this phone number already exists",
+        )
 
     create_audit_log(
         action="CREATE",
@@ -126,7 +138,7 @@ def get_patients(
     patients = list(
         patients_collection.find(
             query,
-            {"_id": 0}
+            {"_id": 0, "_pending_reference_writes": 0}
         )
     )
 
@@ -209,12 +221,18 @@ def update_patient(
         )
 
     # Update only the provided fields
-    patients_collection.update_one(
-        {"_id": patient_object_id},
-        {
-            "$set": update_data
-        }
-    )
+    try:
+        update_result = patients_collection.update_one(
+            {"_id": patient_object_id},
+            {"$set": update_data},
+        )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Patient with this phone number already exists",
+        )
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
     create_audit_log(
         action="UPDATE",
@@ -243,11 +261,28 @@ def delete_patient(
     # Validate patient ID
     patient_object_id = get_object_id(patient_id, "patient")
 
+    patient_filter = {"patient_id": patient_object_id}
+    if (
+        appointments_collection.find_one(patient_filter)
+        or medical_records_collection.find_one(patient_filter)
+        or prescriptions_collection.find_one(patient_filter)
+        or patient_vitals_collection.find_one(patient_filter)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Patient cannot be deleted while related records exist",
+        )
+
     result = patients_collection.delete_one(
-        {"_id": patient_object_id}
+        without_pending_references(patient_object_id)
     )
 
     if result.deleted_count == 0:
+        if patients_collection.find_one({"_id": patient_object_id}):
+            raise HTTPException(
+                status_code=409,
+                detail="Patient has concurrent references; retry deletion",
+            )
         raise HTTPException(
             status_code=404,
             detail="Patient not found"

@@ -5,6 +5,7 @@ import secrets
 import sys
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
+from pymongo.errors import DuplicateKeyError
 
 from app.core.config import settings
 from app.database.connection import admin_invitations_collection, users_collection
@@ -60,23 +61,33 @@ created_at = datetime.now(timezone.utc)
 #calculate expiration time
 expires_at = created_at + timedelta(minutes=settings.admin_invitation_expire_minutes)
 
-#it ask mongodb that find old invitation that is not being used yet and make invalid them.
+# Expire old unused invitations. A still-valid active invitation is preserved;
+# the unique active-invitation index makes concurrent generation single-winner.
 admin_invitations_collection.update_many(
-    {"used": False},
-    {"$set": {"used": True, "revoked_at": created_at}},
+    {"used": False, "expires_at": {"$lte": created_at}},
+    {"$set": {
+        "used": True,
+        "active_invitation": False,
+        "revoked_at": created_at,
+    }},
 )
 
 
 #now save the invitation in mongodb
-admin_invitations_collection.insert_one(
-    {
-        "token_hash": token_hash,
-        "email": email,
-        "expires_at": expires_at,
-        "used": False,
-        "created_at": created_at,
-    }
-)
+try:
+    admin_invitations_collection.insert_one(
+        {
+            "token_hash": token_hash,
+            "email": email,
+            "expires_at": expires_at,
+            "used": False,
+            "active_invitation": True,
+            "created_at": created_at,
+        }
+    )
+except DuplicateKeyError:
+    print("Another invitation was created at the same time. Use that link.")
+    sys.exit(1)
 
 # The token goes in the URL fragment so the browser does not send it in the page request.
 email_for_url = quote(email, safe="")

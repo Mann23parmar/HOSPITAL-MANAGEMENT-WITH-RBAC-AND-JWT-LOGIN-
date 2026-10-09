@@ -1,15 +1,19 @@
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.core.authorization import (
     get_current_doctor,
     get_existing_object_id,
     get_object_id,
+    protect_references,
+    without_pending_references,
 )
 from app.database.connection import (
     appointments_collection,
     patients_collection,
-    doctors_collection
+    doctors_collection,
+    medical_records_collection,
 )
 
 from app.core.rbac import require_role
@@ -59,9 +63,17 @@ def create_appointment(
         "status": "scheduled"
     }
 
-    result = appointments_collection.insert_one(
-        appointment_data
-    )
+    try:
+        with protect_references(
+            (patients_collection, patient_object_id, "patient"),
+            (doctors_collection, doctor_object_id, "doctor"),
+        ):
+            result = appointments_collection.insert_one(appointment_data)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="This doctor already has a scheduled appointment at that time",
+        )
 
     create_audit_log(
         action="CREATE",
@@ -245,6 +257,13 @@ def update_appointment(
             )
 
         update_data["doctor_id"] = doctor_object_id
+    else:
+        doctor_object_id = existing_appointment["doctor_id"]
+
+    if "patient_id" in update_data:
+        patient_object_id = update_data["patient_id"]
+    else:
+        patient_object_id = existing_appointment["patient_id"]
 
     # Validate appointment status
     if "status" in update_data:
@@ -276,11 +295,53 @@ def update_appointment(
             update_data["appointment_time"].isoformat()
         )
 
-    # Update appointment
-    appointments_collection.update_one(
-        {"_id": appointment_object_id},
-        {"$set": update_data}
+    relationship_fields_changed = (
+        patient_object_id != existing_appointment["patient_id"]
+        or doctor_object_id != existing_appointment["doctor_id"]
     )
+    if relationship_fields_changed and medical_records_collection.find_one(
+        {"appointment_id": appointment_object_id}
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Appointment patient or doctor cannot change after a medical record exists",
+        )
+
+    # Compare the original relationships so concurrent updates cannot validate
+    # against one appointment and then overwrite another request's changes.
+    update_filter = {
+        "_id": appointment_object_id,
+        "patient_id": existing_appointment["patient_id"],
+        "doctor_id": existing_appointment["doctor_id"],
+    }
+    if relationship_fields_changed:
+        update_filter["_pending_reference_writes"] = {"$in": [None, 0]}
+    if current_user["role"] == "doctor":
+        update_filter["doctor_id"] = current_doctor["_id"]
+
+    pending_references = []
+    if patient_object_id != existing_appointment["patient_id"]:
+        pending_references.append((patients_collection, patient_object_id, "patient"))
+    if doctor_object_id != existing_appointment["doctor_id"]:
+        pending_references.append((doctors_collection, doctor_object_id, "doctor"))
+
+    try:
+        with protect_references(*pending_references):
+            update_result = appointments_collection.update_one(
+                update_filter,
+                {"$set": update_data},
+            )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="This doctor already has a scheduled appointment at that time",
+        )
+
+    if update_result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Appointment changed or reassigned concurrently; reload and retry",
+        )
 
     create_audit_log(
         action="UPDATE",
@@ -306,11 +367,22 @@ def delete_appointment(
     # Validate appointment ID
     appointment_object_id = get_object_id(appointment_id, "appointment")
 
+    if medical_records_collection.find_one({"appointment_id": appointment_object_id}):
+        raise HTTPException(
+            status_code=409,
+            detail="Appointment cannot be deleted while a medical record references it",
+        )
+
     result = appointments_collection.delete_one(
-        {"_id": appointment_object_id}
+        without_pending_references(appointment_object_id)
     )
 
     if result.deleted_count == 0:
+        if appointments_collection.find_one({"_id": appointment_object_id}):
+            raise HTTPException(
+                status_code=409,
+                detail="Appointment is being updated concurrently; retry deletion",
+            )
 
         raise HTTPException(
             status_code=404,

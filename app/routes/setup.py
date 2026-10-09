@@ -115,7 +115,11 @@ def create_initial_admin(admin: InitialAdminCreate):
             "used": False,
             "expires_at": {"$gt": now},
         },
-        {"$set": {"used": True, "used_at": now}},
+        {"$set": {
+            "used": True,
+            "active_invitation": False,
+            "used_at": now,
+        }},
         return_document=ReturnDocument.BEFORE,
     )
     if invitation is None:

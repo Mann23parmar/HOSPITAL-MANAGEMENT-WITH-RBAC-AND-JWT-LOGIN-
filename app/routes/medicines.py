@@ -1,8 +1,9 @@
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
-from app.database.connection import medicines_collection
+from app.database.connection import medicines_collection, prescriptions_collection
 from app.core.rbac import require_role
 from app.schemas.medicine import MedicineCreate, MedicineUpdate
 from app.services.audit_service import create_audit_log
@@ -60,9 +61,13 @@ def create_medicine(
         medicine.expiry_date.isoformat()
     )
 
-    result = medicines_collection.insert_one(
-        medicine_data
-    )
+    try:
+        result = medicines_collection.insert_one(medicine_data)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="This medicine from this manufacturer already exists",
+        )
 
     create_audit_log(
         action="CREATE",
@@ -95,7 +100,11 @@ def get_medicines(
     medicines = list(
         medicines_collection.find(
             {},
-            {"_id": 0}
+            {
+                "_id": 0,
+                "_pending_reference_writes": 0,
+                "_pending_prescription_reservations": 0,
+            }
         )
     )
 
@@ -184,10 +193,27 @@ def update_medicine(
         )
 
     # Update only provided fields
-    medicines_collection.update_one(
-        {"_id": medicine_object_id},
-        {"$set": update_data}
-    )
+    medicine_update_filter = {"_id": medicine_object_id}
+    if "quantity" in update_data:
+        # Do not overwrite a concurrent prescription's stock decrement.
+        medicine_update_filter["quantity"] = existing_medicine["quantity"]
+
+    try:
+        update_result = medicines_collection.update_one(
+            medicine_update_filter,
+            {"$set": update_data},
+        )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Another medicine with this name and manufacturer already exists",
+        )
+
+    if update_result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Medicine stock changed concurrently; reload and retry",
+        )
 
     create_audit_log(
         action="UPDATE",
@@ -218,11 +244,25 @@ def delete_medicine(
         medicine_id
     )
 
+    if prescriptions_collection.find_one({"medicine_id": medicine_object_id}):
+        raise HTTPException(
+            status_code=409,
+            detail="Medicine cannot be deleted while prescriptions reference it",
+        )
+
     result = medicines_collection.delete_one(
-        {"_id": medicine_object_id}
+        {
+            "_id": medicine_object_id,
+            "_pending_prescription_reservations": {"$in": [None, 0]},
+        }
     )
 
     if result.deleted_count == 0:
+        if medicines_collection.find_one({"_id": medicine_object_id}):
+            raise HTTPException(
+                status_code=409,
+                detail="Medicine has an in-progress prescription; retry deletion",
+            )
         raise HTTPException(
             status_code=404,
             detail="Medicine not found"

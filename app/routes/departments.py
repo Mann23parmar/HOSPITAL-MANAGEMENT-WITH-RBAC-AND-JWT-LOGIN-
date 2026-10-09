@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
-from app.core.authorization import get_object_id
-from app.database.connection import departments_collection
+from app.core.authorization import get_object_id, without_pending_references
+from app.database.connection import (
+    departments_collection,
+    doctors_collection,
+    nurses_collection,
+)
 from app.core.rbac import require_role
 from app.schemas.department import (
     DepartmentCreate,
@@ -38,9 +43,10 @@ def create_department(
     department_data = department.model_dump()
 
     # Insert department
-    result = departments_collection.insert_one(
-        department_data
-    )
+    try:
+        result = departments_collection.insert_one(department_data)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="Department already exists")
 
     create_audit_log(
         action="CREATE",
@@ -70,7 +76,7 @@ def get_departments(
     departments = list(
         departments_collection.find(
             {},
-            {"_id": 0}
+            {"_id": 0, "_pending_reference_writes": 0}
         )
     )
 
@@ -132,12 +138,18 @@ def update_department(
             )
 
     # Update only provided fields
-    departments_collection.update_one(
-        {"_id": department_object_id},
-        {
-            "$set": update_data
-        }
-    )
+    try:
+        update_result = departments_collection.update_one(
+            {"_id": department_object_id},
+            {"$set": update_data},
+        )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Another department with this name already exists",
+        )
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Department not found")
 
     create_audit_log(
         action="UPDATE",
@@ -163,11 +175,25 @@ def delete_department(
     # Validate department ID
     department_object_id = get_object_id(department_id, "department")
 
+    if (
+        doctors_collection.find_one({"department_id": department_object_id})
+        or nurses_collection.find_one({"department_id": department_object_id})
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Department cannot be deleted while staff are assigned to it",
+        )
+
     result = departments_collection.delete_one(
-        {"_id": department_object_id}
+        without_pending_references(department_object_id)
     )
 
     if result.deleted_count == 0:
+        if departments_collection.find_one({"_id": department_object_id}):
+            raise HTTPException(
+                status_code=409,
+                detail="Department has concurrent references; retry deletion",
+            )
         raise HTTPException(
             status_code=404,
             detail="Department not found"

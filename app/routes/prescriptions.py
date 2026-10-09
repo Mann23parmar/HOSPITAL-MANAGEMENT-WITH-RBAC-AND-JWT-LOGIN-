@@ -8,6 +8,7 @@ from app.core.authorization import (
     get_current_doctor,
     get_existing_object_id,
     get_object_id,
+    protect_references,
 )
 
 from app.database.connection import (
@@ -77,6 +78,37 @@ def get_available_medicine(medicine_id: str):
         )
 
     return medicine
+
+
+def reserve_medicine_stock(medicine_object_id: ObjectId, quantity: int) -> None:
+    """Atomically reserve stock only while enough unexpired stock remains."""
+    result = medicines_collection.update_one(
+        {
+            "_id": medicine_object_id,
+            "quantity": {"$gte": quantity},
+            "expiry_date": {"$gt": date.today().isoformat()},
+        },
+        {
+            "$inc": {
+                "quantity": -quantity,
+                "_pending_prescription_reservations": 1,
+            }
+        },
+    )
+    if result.matched_count:
+        return
+
+    medicine = medicines_collection.find_one({"_id": medicine_object_id})
+    if not medicine:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+    if date.fromisoformat(medicine["expiry_date"]) <= date.today():
+        raise HTTPException(status_code=400, detail="Medicine has expired")
+    if medicine["quantity"] <= 0:
+        raise HTTPException(status_code=400, detail="Medicine is out of stock")
+    raise HTTPException(
+        status_code=400,
+        detail="Requested quantity is greater than available stock",
+    )
 
 
 # Reusable prescription ID validation
@@ -181,18 +213,43 @@ def create_prescription(
     }
 
     # Reduce medicine stock
+    reserve_medicine_stock(medicine_object_id, prescription.quantity)
+
+    # Compensate if insertion fails after the atomic stock reservation.
+    try:
+        with protect_references(
+            (patients_collection, patient_object_id, "patient"),
+            (doctors_collection, doctor_object_id, "doctor"),
+            (medical_records_collection, medical_record_object_id, "medical record"),
+        ):
+            current_medical_record = medical_records_collection.find_one(
+                {"_id": medical_record_object_id}
+            )
+            if (
+                not current_medical_record
+                or current_medical_record["patient_id"] != patient_object_id
+                or current_medical_record["doctor_id"] != doctor_object_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Medical record changed while creating the prescription; reload and retry",
+                )
+            result = prescriptions_collection.insert_one(prescription_data)
+    except Exception:
+        medicines_collection.update_one(
+            {"_id": medicine_object_id},
+            {
+                "$inc": {
+                    "quantity": prescription.quantity,
+                    "_pending_prescription_reservations": -1,
+                }
+            },
+        )
+        raise
+
     medicines_collection.update_one(
         {"_id": medicine_object_id},
-        {
-            "$inc": {
-                "quantity": -prescription.quantity
-            }
-        }
-    )
-
-    # Insert prescription
-    result = prescriptions_collection.insert_one(
-        prescription_data
+        {"$inc": {"_pending_prescription_reservations": -1}},
     )
 
     create_audit_log(
@@ -445,19 +502,98 @@ def update_prescription(
         )
 
     # Validate medicine ID if provided
-    if "medicine_id" in update_data:
+    replacement_medicine_id = None
+    old_medicine_id = existing_prescription["medicine_id"]
+    old_quantity = existing_prescription["quantity"]
+    medicine_changed = False
 
-        medicine = get_available_medicine(
-            update_data["medicine_id"]
+    if "medicine_id" in update_data:
+        medicine = get_available_medicine(update_data["medicine_id"])
+        replacement_medicine_id = medicine["_id"]
+        update_data["medicine_id"] = replacement_medicine_id
+        medicine_changed = replacement_medicine_id != old_medicine_id
+
+    if medicine_changed:
+        reserve_medicine_stock(replacement_medicine_id, old_quantity)
+
+    # Compare the old stock-bearing fields to stop concurrent medicine changes
+    # from both updating the prescription and reserving stock.
+    update_filter = {
+        "_id": prescription_object_id,
+        "patient_id": existing_prescription["patient_id"],
+        "doctor_id": existing_prescription["doctor_id"],
+        "medical_record_id": existing_prescription["medical_record_id"],
+    }
+    if current_user["role"] == "doctor":
+        update_filter["doctor_id"] = current_doctor["_id"]
+    if medicine_changed:
+        update_filter.update({"medicine_id": old_medicine_id, "quantity": old_quantity})
+
+    pending_references = []
+    if patient_object_id != existing_prescription["patient_id"]:
+        pending_references.append((patients_collection, patient_object_id, "patient"))
+    if doctor_object_id != existing_prescription["doctor_id"]:
+        pending_references.append((doctors_collection, doctor_object_id, "doctor"))
+    pending_references.append(
+        (medical_records_collection, medical_record_object_id, "medical record")
+    )
+
+    try:
+        with protect_references(*pending_references):
+            current_medical_record = medical_records_collection.find_one(
+                {"_id": medical_record_object_id}
+            )
+            if (
+                not current_medical_record
+                or current_medical_record["patient_id"] != patient_object_id
+                or current_medical_record["doctor_id"] != doctor_object_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Medical record changed while updating the prescription; reload and retry",
+                )
+            update_result = prescriptions_collection.update_one(
+                update_filter,
+                {"$set": update_data},
+            )
+    except Exception:
+        if medicine_changed:
+            medicines_collection.update_one(
+                {"_id": replacement_medicine_id},
+                {
+                    "$inc": {
+                        "quantity": old_quantity,
+                        "_pending_prescription_reservations": -1,
+                    }
+                },
+            )
+        raise
+
+    if update_result.matched_count == 0:
+        if medicine_changed:
+            medicines_collection.update_one(
+                {"_id": replacement_medicine_id},
+                {
+                    "$inc": {
+                        "quantity": old_quantity,
+                        "_pending_prescription_reservations": -1,
+                    }
+                },
+            )
+        raise HTTPException(
+            status_code=409,
+            detail="Prescription changed concurrently; reload and retry",
         )
 
-        update_data["medicine_id"] = medicine["_id"]
-
-    # Update only provided fields
-    prescriptions_collection.update_one(
-        {"_id": prescription_object_id},
-        {"$set": update_data}
-    )
+    if medicine_changed:
+        medicines_collection.update_one(
+            {"_id": old_medicine_id},
+            {"$inc": {"quantity": old_quantity}},
+        )
+        medicines_collection.update_one(
+            {"_id": replacement_medicine_id},
+            {"$inc": {"_pending_prescription_reservations": -1}},
+        )
 
     create_audit_log(
         action="UPDATE",

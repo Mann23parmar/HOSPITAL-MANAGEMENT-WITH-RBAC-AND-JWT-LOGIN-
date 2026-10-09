@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import HTTPException
@@ -7,6 +9,38 @@ from app.database.connection import (
     nurses_collection,
     users_collection,
 )
+
+
+@contextmanager
+def protect_references(*references):
+    """Prevent a referenced document from being deleted during a write."""
+    acquired = []
+    try:
+        for collection, object_id, resource_name in references:
+            result = collection.update_one(
+                {"_id": object_id},
+                {"$inc": {"_pending_reference_writes": 1}},
+            )
+            if result.matched_count == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{resource_name.capitalize()} not found",
+                )
+            acquired.append((collection, object_id))
+        yield
+    finally:
+        for collection, object_id in reversed(acquired):
+            collection.update_one(
+                {"_id": object_id},
+                {"$inc": {"_pending_reference_writes": -1}},
+            )
+
+
+def without_pending_references(object_id: ObjectId) -> dict:
+    return {
+        "_id": object_id,
+        "_pending_reference_writes": {"$in": [None, 0]},
+    }
 
 
 def get_object_id(value: str, resource_name: str) -> ObjectId:

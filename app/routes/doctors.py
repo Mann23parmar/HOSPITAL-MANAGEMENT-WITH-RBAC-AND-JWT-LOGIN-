@@ -1,15 +1,21 @@
 
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.database.connection import (
     doctors_collection,
     users_collection,
-    departments_collection
+    departments_collection,
+    appointments_collection,
+    medical_records_collection,
+    prescriptions_collection,
 )
 
 from app.core.authorization import (
     get_existing_object_id,
     get_object_id,
+    protect_references,
+    without_pending_references,
     get_user_object_id_for_role,
 )
 from app.core.rbac import require_role
@@ -68,15 +74,24 @@ def create_doctor(
 
     doctor_data = {
         "user_id": user_object_id,
+        "_unique_user_profile": True,
         "department_id": department_object_id,
         "name": doctor.name,
         "specialization": doctor.specialization,
         "phone": doctor.phone
     }
 
-    result = doctors_collection.insert_one(
-        doctor_data
-    )
+    try:
+        with protect_references(
+            (users_collection, user_object_id, "user"),
+            (departments_collection, department_object_id, "department"),
+        ):
+            result = doctors_collection.insert_one(doctor_data)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Doctor profile or phone number already exists",
+        )
 
     create_audit_log(
         action="CREATE",
@@ -230,6 +245,7 @@ def update_doctor(
             )
 
         update_data["user_id"] = user_object_id
+        update_data["_unique_user_profile"] = True
 
     # Validate department_id only if provided
     if "department_id" in update_data:
@@ -261,12 +277,25 @@ def update_doctor(
             )
 
     # Update only provided fields
-    doctors_collection.update_one(
-        {"_id": doctor_object_id},
-        {
-            "$set": update_data
-        }
-    )
+    pending_references = []
+    if "department_id" in update_data and update_data["department_id"] != existing_doctor["department_id"]:
+        pending_references.append((departments_collection, update_data["department_id"], "department"))
+    if "user_id" in update_data and update_data["user_id"] != existing_doctor["user_id"]:
+        pending_references.append((users_collection, update_data["user_id"], "user"))
+
+    try:
+        with protect_references(*pending_references):
+            update_result = doctors_collection.update_one(
+                {"_id": doctor_object_id},
+                {"$set": update_data},
+            )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Doctor profile or phone number already exists",
+        )
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor not found")
 
     create_audit_log(
         action="UPDATE",
@@ -310,8 +339,21 @@ def delete_doctor(
             detail="Doctor not found"
         )
 
+    doctor_filter = {"doctor_id": doctor_object_id}
+    if (
+        appointments_collection.find_one(doctor_filter)
+        or medical_records_collection.find_one(doctor_filter)
+        or prescriptions_collection.find_one(doctor_filter)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Doctor cannot be deleted while related records exist",
+        )
+
     # Get linked user ID
     user_object_id = doctor["user_id"]
+    linked_user = users_collection.find_one({"_id": user_object_id})
+    was_active = linked_user.get("is_active", True) if linked_user else False
 
     # Deactivate user account
     users_collection.update_one(
@@ -331,9 +373,24 @@ def delete_doctor(
     )
 
     # Delete doctor profile
-    doctors_collection.delete_one(
-        {"_id": doctor_object_id}
+    delete_result = doctors_collection.delete_one(
+        without_pending_references(doctor_object_id)
     )
+    if delete_result.deleted_count == 0:
+        doctor_still_exists = doctors_collection.find_one({"_id": doctor_object_id})
+        if doctor_still_exists and was_active:
+            users_collection.update_one(
+                {"_id": user_object_id},
+                {"$set": {"is_active": True}},
+            )
+        raise HTTPException(
+            status_code=409 if doctor_still_exists else 404,
+            detail=(
+                "Doctor is being referenced by a concurrent request; retry deletion"
+                if doctor_still_exists
+                else "Doctor not found"
+            ),
+        )
 
     create_audit_log(
         action="DELETE",

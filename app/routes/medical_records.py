@@ -1,13 +1,17 @@
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.core.authorization import (
     get_current_doctor,
     get_existing_object_id,
+    protect_references,
+    without_pending_references,
 )
 from app.database.connection import (
     medical_records_collection,
+    prescriptions_collection,
     patients_collection,
     doctors_collection,
     appointments_collection
@@ -100,9 +104,30 @@ def create_medical_record(
         "notes": record.notes
     }
 
-    result = medical_records_collection.insert_one(
-        record_data
-    )
+    try:
+        with protect_references(
+            (patients_collection, patient_object_id, "patient"),
+            (doctors_collection, doctor_object_id, "doctor"),
+            (appointments_collection, appointment_object_id, "appointment"),
+        ):
+            appointment = appointments_collection.find_one(
+                {"_id": appointment_object_id}
+            )
+            if (
+                not appointment
+                or appointment["patient_id"] != patient_object_id
+                or appointment["doctor_id"] != doctor_object_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Appointment changed while creating the medical record; reload and retry",
+                )
+            result = medical_records_collection.insert_one(record_data)
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="A medical record already exists for this appointment",
+        )
 
     create_audit_log(
         action="CREATE",
@@ -363,10 +388,78 @@ def update_medical_record(
         )
 
     # Update only provided fields
-    medical_records_collection.update_one(
-        {"_id": record_object_id},
-        {"$set": update_data}
+    relationships_changed = any(
+        new_id != existing_record.get(field)
+        for field, new_id in (
+            ("patient_id", patient_object_id),
+            ("doctor_id", doctor_object_id),
+            ("appointment_id", appointment_object_id),
+        )
     )
+    if relationships_changed and prescriptions_collection.find_one(
+        {"medical_record_id": record_object_id}
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Medical record relationships cannot change while prescriptions reference it",
+        )
+
+    update_filter = {
+        "_id": record_object_id,
+        "patient_id": existing_record["patient_id"],
+        "doctor_id": existing_record["doctor_id"],
+        "appointment_id": existing_record["appointment_id"],
+    }
+    if current_user["role"] == "doctor":
+        update_filter["doctor_id"] = current_doctor["_id"]
+    if relationships_changed:
+        update_filter["_pending_reference_writes"] = {"$in": [None, 0]}
+
+    pending_references = []
+    for collection, new_id, old_id, resource_name in (
+        (patients_collection, patient_object_id, existing_record["patient_id"], "patient"),
+        (doctors_collection, doctor_object_id, existing_record["doctor_id"], "doctor"),
+        (appointments_collection, appointment_object_id, existing_record["appointment_id"], "appointment"),
+    ):
+        if new_id != old_id:
+            pending_references.append((collection, new_id, resource_name))
+
+    try:
+        with protect_references(*pending_references):
+            current_appointment = appointments_collection.find_one(
+                {"_id": appointment_object_id}
+            )
+            if (
+                not current_appointment
+                or current_appointment["patient_id"] != patient_object_id
+                or current_appointment["doctor_id"] != doctor_object_id
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Appointment changed while updating the medical record; reload and retry",
+                )
+            if relationships_changed and prescriptions_collection.find_one(
+                {"medical_record_id": record_object_id}
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Medical record relationships cannot change while prescriptions reference it",
+                )
+            update_result = medical_records_collection.update_one(
+                update_filter,
+                {"$set": update_data},
+            )
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail="A medical record already exists for this appointment",
+        )
+
+    if update_result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Medical record changed or reassigned concurrently; reload and retry",
+        )
 
     create_audit_log(
         action="UPDATE",
@@ -401,11 +494,22 @@ def delete_medical_record(
             detail="Invalid medical record ID"
         )
 
+    if prescriptions_collection.find_one({"medical_record_id": record_object_id}):
+        raise HTTPException(
+            status_code=409,
+            detail="Medical record cannot be deleted while prescriptions reference it",
+        )
+
     result = medical_records_collection.delete_one(
-        {"_id": record_object_id}
+        without_pending_references(record_object_id)
     )
 
     if result.deleted_count == 0:
+        if medical_records_collection.find_one({"_id": record_object_id}):
+            raise HTTPException(
+                status_code=409,
+                detail="Medical record is being updated concurrently; retry deletion",
+            )
         raise HTTPException(
             status_code=404,
             detail="Medical record not found"

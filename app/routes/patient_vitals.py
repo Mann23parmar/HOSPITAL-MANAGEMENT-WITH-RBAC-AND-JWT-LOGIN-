@@ -10,7 +10,12 @@ from app.database.connection import (
 )
 
 from app.core.rbac import require_role
-from app.core.authorization import get_current_nurse, get_existing_object_id
+from app.core.authorization import (
+    get_current_nurse,
+    get_existing_object_id,
+    protect_references,
+    without_pending_references,
+)
 from app.schemas.patient_vitals import (
     PatientVitalsCreate,
     PatientVitalsUpdate
@@ -111,9 +116,11 @@ def create_patient_vitals(
     }
 
     # Insert into MongoDB
-    result = patient_vitals_collection.insert_one(
-        vitals_data
-    )
+    with protect_references(
+        (patients_collection, patient_object_id, "patient"),
+        (nurses_collection, nurse_object_id, "nurse"),
+    ):
+        result = patient_vitals_collection.insert_one(vitals_data)
 
     create_audit_log(
         action="CREATE",
@@ -279,10 +286,26 @@ def update_patient_vitals(
         update_data["nurse_id"] = nurse_object_id
 
     # Update only provided fields
-    patient_vitals_collection.update_one(
-        {"_id": vitals_object_id},
-        {"$set": update_data}
-    )
+    update_filter = {"_id": vitals_object_id}
+    if current_nurse:
+        update_filter["nurse_id"] = current_nurse["_id"]
+
+    pending_references = []
+    if "patient_id" in update_data and update_data["patient_id"] != existing_vitals["patient_id"]:
+        pending_references.append((patients_collection, update_data["patient_id"], "patient"))
+    if "nurse_id" in update_data and update_data["nurse_id"] != existing_vitals["nurse_id"]:
+        pending_references.append((nurses_collection, update_data["nurse_id"], "nurse"))
+
+    with protect_references(*pending_references):
+        update_result = patient_vitals_collection.update_one(
+            update_filter,
+            {"$set": update_data},
+        )
+    if update_result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Vitals changed or reassigned concurrently; reload and retry",
+        )
 
     create_audit_log(
         action="UPDATE",
@@ -311,9 +334,9 @@ def delete_patient_vitals(
     )
 
     # Delete vitals
-    result = patient_vitals_collection.delete_one({
-        "_id": vitals_object_id
-    })
+    result = patient_vitals_collection.delete_one(
+        without_pending_references(vitals_object_id)
+    )
 
     if result.deleted_count == 0:
         raise HTTPException(
