@@ -18,7 +18,8 @@ router = APIRouter(
 
 @router.post(
     "/",
-    dependencies=[Depends(require_role("admin"))]
+    dependencies=[Depends(require_role("admin"))],
+    status_code=201,
 )
 def create_user(
     user: UserCreate,

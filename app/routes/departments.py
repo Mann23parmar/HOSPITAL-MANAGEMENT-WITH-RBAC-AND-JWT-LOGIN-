@@ -28,7 +28,7 @@ def get_department_object_id(department_id: str):
 
 
 # Create department
-@router.post("/departments")
+@router.post("/departments", status_code=201)
 def create_department(
     department: DepartmentCreate,
     current_user: dict = Depends(

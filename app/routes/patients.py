@@ -37,7 +37,7 @@ def get_patient_object_id(patient_id: str):
 # Create patient
 # ---------------------------------------------------------
 
-@router.post("/patients")
+@router.post("/patients", status_code=201)
 def create_patient(
     patient: PatientCreate,
     current_user: dict = Depends(

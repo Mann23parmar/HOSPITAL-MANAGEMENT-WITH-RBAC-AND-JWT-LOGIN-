@@ -10,9 +10,9 @@ from app.schemas.update_payload import UpdatePayload
 import re
 
 
-# =========================================================
+
 # Reusable validation functions
-# =========================================================
+
 
 def validate_blood_pressure(value):
     if value is None:
@@ -24,6 +24,11 @@ def validate_blood_pressure(value):
         )
 
     systolic, diastolic = map(int, value.split("/"))
+
+    if systolic <= diastolic:
+        raise ValueError(
+            "Systolic blood pressure must be greater than diastolic blood pressure"
+        )
 
     if not 50 <= systolic <= 250:
         raise ValueError(

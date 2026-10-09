@@ -81,7 +81,7 @@ def get_department_object_id(department_id: str):
 # Create nurse
 # ---------------------------------------------------------
 
-@router.post("/nurses")
+@router.post("/nurses", status_code=201)
 def create_nurse(
     nurse: NurseCreate,
     current_user: dict = Depends(

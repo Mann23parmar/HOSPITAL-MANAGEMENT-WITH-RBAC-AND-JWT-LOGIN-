@@ -88,7 +88,7 @@ def admin_invitation_page():
     )
 
 
-@router.post("/setup/admin")
+@router.post("/setup/admin", status_code=201)
 def create_initial_admin(admin: InitialAdminCreate):
     existing_admin = users_collection.find_one({"role": "admin"})
     if existing_admin:

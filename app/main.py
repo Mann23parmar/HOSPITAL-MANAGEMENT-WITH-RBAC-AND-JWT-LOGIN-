@@ -1,8 +1,10 @@
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.database.connection import client
 from app.routes.setup import router as setup_router
-from app.routes.auth import router as auth_router
+from app.routes.auth import router as auth_router, limiter
 from app.routes.users import router as users_router
 from app.routes.departments import router as departments_router
 from app.routes.doctors import router as doctors_router
@@ -16,6 +18,8 @@ from app.routes.patient_vitals import router as patient_vitals_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

@@ -10,6 +10,7 @@ from app.database.connection import (
 )
 
 from app.core.rbac import require_role
+from app.core.authorization import get_current_nurse
 from app.schemas.patient_vitals import (
     PatientVitalsCreate,
     PatientVitalsUpdate
@@ -99,7 +100,7 @@ def get_vitals_object_id(vitals_id: str):
 
 
 # Create patient vitals
-@router.post("/patient-vitals")
+@router.post("/patient-vitals", status_code=201)
 def create_patient_vitals(
     vitals: PatientVitalsCreate,
     current_user: dict = Depends(
@@ -112,10 +113,16 @@ def create_patient_vitals(
         vitals.patient_id
     )
 
-    # Validate nurse
-    nurse_object_id = get_nurse_object_id(
-        vitals.nurse_id
-    )
+    # Nurses can only record vitals under their own profile. Admins can
+    # continue selecting any valid nurse profile.
+    nurse_object_id = get_nurse_object_id(vitals.nurse_id)
+    if current_user["role"] == "nurse":
+        current_nurse = get_current_nurse(current_user)
+        if nurse_object_id != current_nurse["_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Nurses can only record vitals under their own profile"
+            )
 
     # Prepare vitals document
     vitals_data = {
@@ -156,8 +163,14 @@ def get_patient_vitals(
     )
 ):
 
+    query = {}
+    if current_user["role"] == "nurse":
+        current_nurse = get_current_nurse(current_user)
+        query["nurse_id"] = current_nurse["_id"]
+
     vitals = list(
         patient_vitals_collection.aggregate([
+            {"$match": query},
             {
                 "$lookup": {
                     "from": "patients",
@@ -244,6 +257,15 @@ def update_patient_vitals(
             detail="Patient vitals not found"
         )
 
+    current_nurse = None
+    if current_user["role"] == "nurse":
+        current_nurse = get_current_nurse(current_user)
+        if existing_vitals.get("nurse_id") != current_nurse["_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Nurses can only update vitals they recorded"
+            )
+
     # Get only fields provided by the user
     update_data = vitals.model_dump(
         exclude_unset=True
@@ -271,6 +293,12 @@ def update_patient_vitals(
         nurse_object_id = get_nurse_object_id(
             update_data["nurse_id"]
         )
+
+        if current_nurse and nurse_object_id != current_nurse["_id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="Nurses cannot assign vitals to another nurse"
+            )
 
         update_data["nurse_id"] = nurse_object_id
 

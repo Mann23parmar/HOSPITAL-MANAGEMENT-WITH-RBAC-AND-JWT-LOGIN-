@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from slowapi import Limiter
 from pymongo.collation import Collation
+from slowapi.util import get_remote_address
 
 from app.schemas.user import UserLogin
-from app.database.connection import users_collection, revoked_tokens_collection
+from app.database.connection import (
+    users_collection,
+    revoked_tokens_collection,
+)
 from app.services.auth_service import (
     verify_password,
     create_access_token,
@@ -10,10 +15,12 @@ from app.services.auth_service import (
 )
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/login")
-def login(user: UserLogin):
+@limiter.limit("5/minute")
+def login(user: UserLogin, request: Request):
     email = user.email
 
     stored_user = users_collection.find_one({

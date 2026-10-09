@@ -85,7 +85,7 @@ def get_appointment_object_id(appointment_id: str):
 
 
 # Create appointment
-@router.post("/appointments")
+@router.post("/appointments", status_code=201)
 def create_appointment(
     appointment: AppointmentCreate,
     current_user: dict = Depends(

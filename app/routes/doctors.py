@@ -96,7 +96,7 @@ def get_doctor_object_id(doctor_id: str):
 # Create doctor
 # ---------------------------------------------------------
 
-@router.post("/doctors")
+@router.post("/doctors", status_code=201)
 def create_doctor(
     doctor: DoctorCreate,
     current_user: dict = Depends(

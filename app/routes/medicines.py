@@ -31,7 +31,7 @@ def get_medicine_object_id(medicine_id: str):
 # Create medicine
 # ---------------------------------------------------------
 
-@router.post("/medicines")
+@router.post("/medicines", status_code=201)
 def create_medicine(
     medicine: MedicineCreate,
     current_user: dict = Depends(

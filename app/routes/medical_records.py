@@ -94,7 +94,7 @@ def get_appointment_object_id(appointment_id: str):
 # Create medical record
 # =========================================================
 
-@router.post("/medical-records")
+@router.post("/medical-records", status_code=201)
 def create_medical_record(
     record: MedicalRecordCreate,
     current_user: dict = Depends(

@@ -126,7 +126,7 @@ def get_available_medicine(medicine_id: str):
         medicine["expiry_date"]
     )
 
-    if expiry_date < date.today():
+    if expiry_date <= date.today():
         raise HTTPException(
             status_code=400,
             detail="Medicine has expired"
@@ -155,7 +155,7 @@ def get_prescription_object_id(prescription_id: str):
 
 
 # Create prescription
-@router.post("/prescriptions")
+@router.post("/prescriptions", status_code=201)
 def create_prescription(
     prescription: PrescriptionCreate,
     current_user: dict = Depends(
