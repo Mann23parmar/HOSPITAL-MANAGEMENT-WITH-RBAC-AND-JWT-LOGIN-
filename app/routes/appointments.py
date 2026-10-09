@@ -7,6 +7,7 @@ from app.core.authorization import (
     get_existing_object_id,
     get_object_id,
     protect_references,
+    reference_lease_guard,
     without_pending_references,
 )
 from app.database.connection import (
@@ -315,7 +316,7 @@ def update_appointment(
         "doctor_id": existing_appointment["doctor_id"],
     }
     if relationship_fields_changed:
-        update_filter["_pending_reference_writes"] = {"$in": [None, 0]}
+        update_filter.update(reference_lease_guard())
     if current_user["role"] == "doctor":
         update_filter["doctor_id"] = current_doctor["_id"]
 

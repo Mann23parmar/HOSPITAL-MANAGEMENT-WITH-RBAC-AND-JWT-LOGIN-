@@ -76,7 +76,11 @@ def get_departments(
     departments = list(
         departments_collection.find(
             {},
-            {"_id": 0, "_pending_reference_writes": 0}
+            {
+                "_id": 0,
+                "_pending_reference_writes": 0,
+                "_pending_reference_leases": 0,
+            }
         )
     )
 

@@ -7,6 +7,7 @@ from app.core.authorization import (
     get_current_doctor,
     get_existing_object_id,
     protect_references,
+    reference_lease_guard,
     without_pending_references,
 )
 from app.database.connection import (
@@ -413,7 +414,7 @@ def update_medical_record(
     if current_user["role"] == "doctor":
         update_filter["doctor_id"] = current_doctor["_id"]
     if relationships_changed:
-        update_filter["_pending_reference_writes"] = {"$in": [None, 0]}
+        update_filter.update(reference_lease_guard())
 
     pending_references = []
     for collection, new_id, old_id, resource_name in (

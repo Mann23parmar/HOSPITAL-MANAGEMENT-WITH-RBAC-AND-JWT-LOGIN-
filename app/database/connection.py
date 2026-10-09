@@ -25,6 +25,15 @@ admin_invitations_collection = db["admin_invitations"]
 admin_invitations_collection.create_index("token_hash", unique=True)
 admin_invitations_collection.create_index("expires_at", expireAfterSeconds=0)
 
+# Temporary reservation IDs are used to recover stock if a prescription write
+# is interrupted. Sparse indexing leaves existing prescription documents alone.
+prescriptions_collection.create_index(
+    "stock_reservation_id",
+    unique=True,
+    sparse=True,
+    name="unique_stock_reservation_id",
+)
+
 # Revoked access tokens remain blocked until they expire, then MongoDB removes them.
 revoked_tokens_collection.create_index("jti", unique=True)
 revoked_tokens_collection.create_index("expires_at", expireAfterSeconds=0)

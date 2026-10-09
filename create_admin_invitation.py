@@ -61,10 +61,11 @@ created_at = datetime.now(timezone.utc)
 #calculate expiration time
 expires_at = created_at + timedelta(minutes=settings.admin_invitation_expire_minutes)
 
-# Expire old unused invitations. A still-valid active invitation is preserved;
-# the unique active-invitation index makes concurrent generation single-winner.
+# Replace any earlier active invitation. Its raw token cannot be recovered from
+# the database because only the token hash is stored, so rerunning this script
+# intentionally invalidates the old link and prints a fresh one.
 admin_invitations_collection.update_many(
-    {"used": False, "expires_at": {"$lte": created_at}},
+    {"used": False, "active_invitation": True},
     {"$set": {
         "used": True,
         "active_invitation": False,

@@ -1,4 +1,6 @@
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -11,36 +13,71 @@ from app.database.connection import (
 )
 
 
+REFERENCE_LEASE_MINUTES = 30
+
+
+def reference_lease_guard() -> dict:
+    """Match documents with no currently active reference-write lease."""
+    now = datetime.now(timezone.utc)
+    return {
+        "$or": [
+            {"_pending_reference_leases": {"$exists": False}},
+            {
+                "_pending_reference_leases": {
+                    "$not": {"$elemMatch": {"expires_at": {"$gt": now}}}
+                }
+            },
+        ]
+    }
+
+
 @contextmanager
 def protect_references(*references):
-    """Prevent a referenced document from being deleted during a write."""
+    """Protect referenced documents with leases that expire after a crash."""
     acquired = []
+    lease_id = str(uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=REFERENCE_LEASE_MINUTES
+    )
     try:
         for collection, object_id, resource_name in references:
+            # Keep the lease array bounded when old requests died before release.
+            collection.update_one(
+                {"_id": object_id},
+                {"$pull": {
+                    "_pending_reference_leases": {
+                        "expires_at": {"$lte": datetime.now(timezone.utc)}
+                    }
+                }},
+            )
             result = collection.update_one(
                 {"_id": object_id},
-                {"$inc": {"_pending_reference_writes": 1}},
+                {"$push": {
+                    "_pending_reference_leases": {
+                        "lease_id": lease_id,
+                        "expires_at": expires_at,
+                    }
+                }},
             )
             if result.matched_count == 0:
                 raise HTTPException(
                     status_code=404,
                     detail=f"{resource_name.capitalize()} not found",
                 )
-            acquired.append((collection, object_id))
+            acquired.append((collection, object_id, lease_id))
         yield
     finally:
-        for collection, object_id in reversed(acquired):
+        for collection, object_id, active_lease_id in reversed(acquired):
             collection.update_one(
                 {"_id": object_id},
-                {"$inc": {"_pending_reference_writes": -1}},
+                {"$pull": {
+                    "_pending_reference_leases": {"lease_id": active_lease_id}
+                }},
             )
 
 
 def without_pending_references(object_id: ObjectId) -> dict:
-    return {
-        "_id": object_id,
-        "_pending_reference_writes": {"$in": [None, 0]},
-    }
+    return {"_id": object_id, **reference_lease_guard()}
 
 
 def get_object_id(value: str, resource_name: str) -> ObjectId:

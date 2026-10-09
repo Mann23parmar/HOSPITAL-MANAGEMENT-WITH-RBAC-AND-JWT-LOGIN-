@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,6 +7,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.database.connection import medicines_collection, prescriptions_collection
 from app.core.rbac import require_role
+from app.core.authorization import reference_lease_guard
 from app.schemas.medicine import MedicineCreate, MedicineUpdate
 from app.services.audit_service import create_audit_log
 
@@ -104,6 +107,9 @@ def get_medicines(
                 "_id": 0,
                 "_pending_reference_writes": 0,
                 "_pending_prescription_reservations": 0,
+                "_pending_reference_leases": 0,
+                "_prescription_reservation_leases": 0,
+                "_stock_restore_operations": 0,
             }
         )
     )
@@ -193,7 +199,26 @@ def update_medicine(
         )
 
     # Update only provided fields
-    medicine_update_filter = {"_id": medicine_object_id}
+    medicine_update_filter = {
+        "_id": medicine_object_id,
+        "$and": [
+            reference_lease_guard(),
+            {
+                "$or": [
+                    {"_prescription_reservation_leases": {"$exists": False}},
+                    {
+                        "_prescription_reservation_leases": {
+                            "$not": {
+                                "$elemMatch": {
+                                    "expires_at": {"$gt": datetime.now(timezone.utc)}
+                                }
+                            }
+                        }
+                    },
+                ]
+            },
+        ],
+    }
     if "quantity" in update_data:
         # Do not overwrite a concurrent prescription's stock decrement.
         medicine_update_filter["quantity"] = existing_medicine["quantity"]
@@ -244,24 +269,44 @@ def delete_medicine(
         medicine_id
     )
 
-    if prescriptions_collection.find_one({"medicine_id": medicine_object_id}):
+    if prescriptions_collection.find_one({
+        "$or": [
+            {"medicine_id": medicine_object_id},
+            {"stock_transition.previous_medicine_id": medicine_object_id},
+            {"stock_transition.target_medicine_id": medicine_object_id},
+        ]
+    }):
         raise HTTPException(
             status_code=409,
             detail="Medicine cannot be deleted while prescriptions reference it",
         )
 
-    result = medicines_collection.delete_one(
-        {
-            "_id": medicine_object_id,
-            "_pending_prescription_reservations": {"$in": [None, 0]},
-        }
-    )
+    result = medicines_collection.delete_one({
+        "_id": medicine_object_id,
+        "$and": [
+            reference_lease_guard(),
+            {
+                "$or": [
+                    {"_prescription_reservation_leases": {"$exists": False}},
+                    {
+                        "_prescription_reservation_leases": {
+                            "$not": {
+                                "$elemMatch": {
+                                    "expires_at": {"$gt": datetime.now(timezone.utc)}
+                                }
+                            }
+                        }
+                    },
+                ]
+            },
+        ],
+    })
 
     if result.deleted_count == 0:
         if medicines_collection.find_one({"_id": medicine_object_id}):
             raise HTTPException(
                 status_code=409,
-                detail="Medicine has an in-progress prescription; retry deletion",
+                detail="Medicine has an in-progress write; retry deletion",
             )
         raise HTTPException(
             status_code=404,

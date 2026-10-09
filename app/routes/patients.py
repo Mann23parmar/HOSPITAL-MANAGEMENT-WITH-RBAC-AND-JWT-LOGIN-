@@ -138,7 +138,11 @@ def get_patients(
     patients = list(
         patients_collection.find(
             query,
-            {"_id": 0, "_pending_reference_writes": 0}
+            {
+                "_id": 0,
+                "_pending_reference_writes": 0,
+                "_pending_reference_leases": 0,
+            }
         )
     )
 

@@ -13,13 +13,21 @@ from app.routes.patients import router as patients_router
 from app.routes.appointments import router as appointments_router
 from app.routes.medical_records import router as medical_records_router
 from app.routes.medicines import router as medicines_router
-from app.routes.prescriptions import router as prescriptions_router
+from app.routes.prescriptions import (
+    router as prescriptions_router,
+    reconcile_expired_stock_reservations,
+)
 from app.routes.patient_vitals import router as patient_vitals_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.on_event("startup")
+def recover_abandoned_stock_reservations():
+    reconcile_expired_stock_reservations()
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,6 +1,7 @@
 from bson import ObjectId
 from bson.errors import InvalidId
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -80,8 +81,130 @@ def get_available_medicine(medicine_id: str):
     return medicine
 
 
-def reserve_medicine_stock(medicine_object_id: ObjectId, quantity: int) -> None:
-    """Atomically reserve stock only while enough unexpired stock remains."""
+def _reconcile_expired_stock_reservations(medicine_object_id: ObjectId) -> None:
+    """Repair abandoned reservations before the next stock operation."""
+    now = datetime.now(timezone.utc)
+    medicine = medicines_collection.find_one(
+        {"_id": medicine_object_id},
+        {"_prescription_reservation_leases": 1},
+    )
+    if not medicine:
+        return
+
+    for lease in medicine.get("_prescription_reservation_leases", []):
+        expires_at = lease.get("expires_at")
+        if expires_at and expires_at.replace(tzinfo=timezone.utc) > now:
+            continue
+        transition = prescriptions_collection.find_one(
+            {"stock_transition.reservation_id": lease["lease_id"]}
+        )
+        if transition:
+            recover_stock_transition(lease["lease_id"])
+            continue
+        lease_filter = {
+            "_id": medicine_object_id,
+            "_prescription_reservation_leases": {
+                "$elemMatch": {"lease_id": lease["lease_id"], "expires_at": {"$lte": now}}
+            },
+        }
+        prescription_exists = prescriptions_collection.find_one(
+            {"stock_reservation_id": lease["lease_id"]}, {"_id": 1}
+        )
+        if lease.get("kind") == "return":
+            medicines_collection.update_one(
+                lease_filter,
+                {"$pull": {"_prescription_reservation_leases": {"lease_id": lease["lease_id"]}}},
+            )
+            continue
+        update = {"$pull": {"_prescription_reservation_leases": {"lease_id": lease["lease_id"]}}}
+        if not prescription_exists:
+            update["$inc"] = {"quantity": lease["quantity"]}
+        result = medicines_collection.update_one(lease_filter, update)
+        if result.modified_count and prescription_exists:
+            prescriptions_collection.update_one(
+                {"stock_reservation_id": lease["lease_id"]},
+                {"$unset": {"stock_reservation_id": ""}},
+            )
+
+
+def recover_stock_transition(reservation_id: str) -> None:
+    """Finish or roll back a medicine change interrupted between writes."""
+    prescription = prescriptions_collection.find_one(
+        {"stock_transition.reservation_id": reservation_id}
+    )
+    if not prescription:
+        return
+
+    transition = prescription["stock_transition"]
+    previous_medicine_id = transition["previous_medicine_id"]
+    target_medicine_id = transition["target_medicine_id"]
+    quantity = transition["quantity"]
+
+    if prescription["medicine_id"] == previous_medicine_id:
+        # The prescription update did not commit, so return the new medicine's
+        # reservation. The lease filter makes retries idempotent.
+        restore_stock_reservation(target_medicine_id, reservation_id)
+    elif prescription["medicine_id"] == target_medicine_id:
+        # The prescription now uses the new medicine. Record the old-stock
+        # return on that medicine atomically so a crash cannot apply it twice.
+        medicines_collection.update_one(
+            {
+                "_id": previous_medicine_id,
+                "_stock_restore_operations": {"$ne": reservation_id},
+            },
+            {
+                "$inc": {"quantity": quantity},
+                "$addToSet": {"_stock_restore_operations": reservation_id},
+            },
+        )
+        if not medicines_collection.find_one({"_id": previous_medicine_id}):
+            raise RuntimeError(
+                "Cannot recover prescription stock transition: previous medicine is missing"
+            )
+        finish_stock_reservation(target_medicine_id, reservation_id)
+    else:
+        raise RuntimeError(
+            "Cannot recover prescription stock transition: medicine changed unexpectedly"
+        )
+
+    finish_stock_reservation(previous_medicine_id, reservation_id)
+    prescriptions_collection.update_one(
+        {
+            "_id": prescription["_id"],
+            "stock_transition.reservation_id": reservation_id,
+        },
+        {"$unset": {"stock_transition": ""}},
+    )
+
+
+def reconcile_stock_transitions() -> None:
+    """Recover incomplete medicine swaps before serving application requests."""
+    transitions = prescriptions_collection.find(
+        {"stock_transition": {"$exists": True}},
+        {"stock_transition.reservation_id": 1},
+    )
+    for prescription in transitions:
+        recover_stock_transition(prescription["stock_transition"]["reservation_id"])
+
+
+def reconcile_expired_stock_reservations() -> None:
+    """Recover any stock reservation abandoned before the previous shutdown."""
+    reconcile_stock_transitions()
+    for medicine in medicines_collection.find(
+        {"_prescription_reservation_leases.0": {"$exists": True}},
+        {"_id": 1},
+    ):
+        _reconcile_expired_stock_reservations(medicine["_id"])
+
+
+def reserve_medicine_stock(
+    medicine_object_id: ObjectId,
+    quantity: int,
+    reservation_id: str | None = None,
+) -> str:
+    """Atomically reserve stock and record an expiring, recoverable lease."""
+    _reconcile_expired_stock_reservations(medicine_object_id)
+    lease_id = reservation_id or str(uuid4())
     result = medicines_collection.update_one(
         {
             "_id": medicine_object_id,
@@ -91,12 +214,18 @@ def reserve_medicine_stock(medicine_object_id: ObjectId, quantity: int) -> None:
         {
             "$inc": {
                 "quantity": -quantity,
-                "_pending_prescription_reservations": 1,
-            }
+            },
+            "$push": {
+                "_prescription_reservation_leases": {
+                    "lease_id": lease_id,
+                    "quantity": quantity,
+                    "expires_at": datetime.now(timezone.utc) + timedelta(minutes=30),
+                }
+            },
         },
     )
     if result.matched_count:
-        return
+        return lease_id
 
     medicine = medicines_collection.find_one({"_id": medicine_object_id})
     if not medicine:
@@ -108,6 +237,50 @@ def reserve_medicine_stock(medicine_object_id: ObjectId, quantity: int) -> None:
     raise HTTPException(
         status_code=400,
         detail="Requested quantity is greater than available stock",
+    )
+
+
+def protect_medicine_stock_return(medicine_id: ObjectId, lease_id: str) -> None:
+    result = medicines_collection.update_one(
+        {"_id": medicine_id},
+        {
+            "$push": {
+                "_prescription_reservation_leases": {
+                    "lease_id": lease_id,
+                    "kind": "return",
+                    "expires_at": datetime.now(timezone.utc) + timedelta(minutes=30),
+                }
+            }
+        },
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+
+
+def finish_stock_reservation(medicine_id: ObjectId, lease_id: str) -> None:
+    medicines_collection.update_one(
+        {"_id": medicine_id},
+        {"$pull": {"_prescription_reservation_leases": {"lease_id": lease_id}}},
+    )
+
+
+def restore_stock_reservation(medicine_id: ObjectId, lease_id: str) -> None:
+    medicine = medicines_collection.find_one(
+        {"_id": medicine_id, "_prescription_reservation_leases.lease_id": lease_id},
+        {"_prescription_reservation_leases": 1},
+    )
+    if not medicine:
+        return
+    lease = next(
+        item for item in medicine.get("_prescription_reservation_leases", [])
+        if item["lease_id"] == lease_id
+    )
+    medicines_collection.update_one(
+        {"_id": medicine_id, "_prescription_reservation_leases.lease_id": lease_id},
+        {
+            "$inc": {"quantity": lease["quantity"]},
+            "$pull": {"_prescription_reservation_leases": {"lease_id": lease_id}},
+        },
     )
 
 
@@ -213,7 +386,8 @@ def create_prescription(
     }
 
     # Reduce medicine stock
-    reserve_medicine_stock(medicine_object_id, prescription.quantity)
+    stock_lease_id = reserve_medicine_stock(medicine_object_id, prescription.quantity)
+    prescription_data["stock_reservation_id"] = stock_lease_id
 
     # Compensate if insertion fails after the atomic stock reservation.
     try:
@@ -236,20 +410,12 @@ def create_prescription(
                 )
             result = prescriptions_collection.insert_one(prescription_data)
     except Exception:
-        medicines_collection.update_one(
-            {"_id": medicine_object_id},
-            {
-                "$inc": {
-                    "quantity": prescription.quantity,
-                    "_pending_prescription_reservations": -1,
-                }
-            },
-        )
+        restore_stock_reservation(medicine_object_id, stock_lease_id)
         raise
 
-    medicines_collection.update_one(
-        {"_id": medicine_object_id},
-        {"$inc": {"_pending_prescription_reservations": -1}},
+    finish_stock_reservation(medicine_object_id, stock_lease_id)
+    prescriptions_collection.update_one(
+        {"_id": result.inserted_id}, {"$unset": {"stock_reservation_id": ""}}
     )
 
     create_audit_log(
@@ -298,7 +464,7 @@ def get_prescriptions(
     prescriptions = list(
         prescriptions_collection.find(
             query,
-            {"_id": 0}
+            {"_id": 0, "stock_reservation_id": 0, "stock_transition": 0}
         )
     )
 
@@ -513,9 +679,6 @@ def update_prescription(
         update_data["medicine_id"] = replacement_medicine_id
         medicine_changed = replacement_medicine_id != old_medicine_id
 
-    if medicine_changed:
-        reserve_medicine_stock(replacement_medicine_id, old_quantity)
-
     # Compare the old stock-bearing fields to stop concurrent medicine changes
     # from both updating the prescription and reserving stock.
     update_filter = {
@@ -523,7 +686,11 @@ def update_prescription(
         "patient_id": existing_prescription["patient_id"],
         "doctor_id": existing_prescription["doctor_id"],
         "medical_record_id": existing_prescription["medical_record_id"],
+        "stock_transition": {"$exists": False},
     }
+    for field in update_data:
+        if field in existing_prescription:
+            update_filter[field] = existing_prescription[field]
     if current_user["role"] == "doctor":
         update_filter["doctor_id"] = current_doctor["_id"]
     if medicine_changed:
@@ -537,6 +704,39 @@ def update_prescription(
     pending_references.append(
         (medical_records_collection, medical_record_object_id, "medical record")
     )
+
+    stock_lease_id = None
+    if medicine_changed:
+        stock_lease_id = str(uuid4())
+        reserve_medicine_stock(
+            replacement_medicine_id,
+            old_quantity,
+            reservation_id=stock_lease_id,
+        )
+        try:
+            protect_medicine_stock_return(old_medicine_id, stock_lease_id)
+        except Exception:
+            restore_stock_reservation(replacement_medicine_id, stock_lease_id)
+            raise
+        transition = {
+            "reservation_id": stock_lease_id,
+            "previous_medicine_id": old_medicine_id,
+            "target_medicine_id": replacement_medicine_id,
+            "quantity": old_quantity,
+        }
+        claim_result = prescriptions_collection.update_one(
+            update_filter,
+            {"$set": {"stock_transition": transition}},
+        )
+        if claim_result.matched_count == 0:
+            restore_stock_reservation(replacement_medicine_id, stock_lease_id)
+            finish_stock_reservation(old_medicine_id, stock_lease_id)
+            raise HTTPException(
+                status_code=409,
+                detail="Prescription changed concurrently; reload and retry",
+            )
+        update_filter.pop("stock_transition")
+        update_filter["stock_transition.reservation_id"] = stock_lease_id
 
     try:
         with protect_references(*pending_references):
@@ -558,42 +758,19 @@ def update_prescription(
             )
     except Exception:
         if medicine_changed:
-            medicines_collection.update_one(
-                {"_id": replacement_medicine_id},
-                {
-                    "$inc": {
-                        "quantity": old_quantity,
-                        "_pending_prescription_reservations": -1,
-                    }
-                },
-            )
+            recover_stock_transition(stock_lease_id)
         raise
 
     if update_result.matched_count == 0:
         if medicine_changed:
-            medicines_collection.update_one(
-                {"_id": replacement_medicine_id},
-                {
-                    "$inc": {
-                        "quantity": old_quantity,
-                        "_pending_prescription_reservations": -1,
-                    }
-                },
-            )
+            recover_stock_transition(stock_lease_id)
         raise HTTPException(
             status_code=409,
             detail="Prescription changed concurrently; reload and retry",
         )
 
     if medicine_changed:
-        medicines_collection.update_one(
-            {"_id": old_medicine_id},
-            {"$inc": {"quantity": old_quantity}},
-        )
-        medicines_collection.update_one(
-            {"_id": replacement_medicine_id},
-            {"$inc": {"_pending_prescription_reservations": -1}},
-        )
+        recover_stock_transition(stock_lease_id)
 
     create_audit_log(
         action="UPDATE",
@@ -623,10 +800,16 @@ def delete_prescription(
 
     # Delete prescription
     result = prescriptions_collection.delete_one({
-        "_id": prescription_object_id
+        "_id": prescription_object_id,
+        "stock_transition": {"$exists": False},
     })
 
     if result.deleted_count == 0:
+        if prescriptions_collection.find_one({"_id": prescription_object_id}):
+            raise HTTPException(
+                status_code=409,
+                detail="Prescription medicine is being updated; retry deletion",
+            )
         raise HTTPException(
             status_code=404,
             detail="Prescription not found"
@@ -642,3 +825,6 @@ def delete_prescription(
     return {
         "message": "Prescription deleted successfully"
     }
+
+
+
