@@ -7,8 +7,10 @@ from bson.errors import InvalidId
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pymongo.collation import Collation
 
 from app.database.connection import users_collection, revoked_tokens_collection
+from app.schemas.user import UserLogin
 from app.core.config import (
     JWT_SECRET_KEY,
     JWT_ALGORITHM,
@@ -22,26 +24,17 @@ from app.core.config import (
 def hash_password(password: str) -> str:
     password_bytes = password.encode("utf-8")
 
-    hashed_password = bcrypt.hashpw(
-        password_bytes,
-        bcrypt.gensalt()
-    )
+    hashed_password = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
 
     return hashed_password.decode("utf-8")
 
 
 # Verify entered password with stored hashed password
-def verify_password(
-    password: str,
-    hashed_password: str
-) -> bool:
+def verify_password(password: str, hashed_password: str) -> bool:
     password_bytes = password.encode("utf-8")
     hashed_password_bytes = hashed_password.encode("utf-8")
 
-    return bcrypt.checkpw(
-        password_bytes,
-        hashed_password_bytes
-    )
+    return bcrypt.checkpw(password_bytes, hashed_password_bytes)
 
 
 # Create JWT access token
@@ -63,11 +56,7 @@ def create_access_token(data: dict) -> str:
         "jti": secrets.token_urlsafe(32),
     }
 
-    return jwt.encode(
-        to_encode,
-        JWT_SECRET_KEY,
-        algorithm=JWT_ALGORITHM
-    )
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 # JWT Bearer authentication
@@ -75,9 +64,7 @@ security = HTTPBearer()
 
 
 # Get currently logged-in user
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
 
     try:
@@ -101,10 +88,7 @@ def get_current_user(
         subject = payload["sub"]
         token_id = payload["jti"]
     except JWTError:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or expired token"
-        )
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     if not isinstance(subject, str) or not ObjectId.is_valid(subject):
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -119,15 +103,9 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token")
 
     if current_user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="User not found"
-        )
+        raise HTTPException(status_code=401, detail="User not found")
     if not current_user.get("is_active", True):
-        raise HTTPException(
-            status_code=403,
-            detail="User account is inactive"
-    )
+        raise HTTPException(status_code=403, detail="User account is inactive")
     return {
         "user_id": str(current_user["_id"]),
         "email": current_user["email"],
@@ -135,3 +113,39 @@ def get_current_user(
         "_token_jti": token_id,
         "_token_expires_at": datetime.fromtimestamp(payload["exp"], timezone.utc),
     }
+
+
+def login_user(user: UserLogin) -> dict:
+    """Validate credentials and create the caller's bearer token."""
+    stored_user = users_collection.find_one(
+        {"email": user.email},
+        collation=Collation(locale="en", strength=2),
+    )
+    if stored_user is None or not verify_password(
+        user.password, stored_user["password"]
+    ):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not stored_user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="User account is inactive")
+
+    access_token = create_access_token({"sub": str(stored_user["_id"])})
+    return {
+        "message": "Login successful",
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+
+def logout_user(current_user: dict) -> dict:
+    """Revoke a bearer token; repeated logout requests remain idempotent."""
+    revoked_tokens_collection.update_one(
+        {"jti": current_user["_token_jti"]},
+        {
+            "$setOnInsert": {
+                "jti": current_user["_token_jti"],
+                "expires_at": current_user["_token_expires_at"],
+            }
+        },
+        upsert=True,
+    )
+    return {"message": "Logout successful"}

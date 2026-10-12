@@ -1,15 +1,12 @@
-from datetime import datetime, timezone
-
-from bson import ObjectId
-from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException
-from pymongo.errors import DuplicateKeyError
-
-from app.database.connection import medicines_collection, prescriptions_collection
+from fastapi import APIRouter, Depends
 from app.core.rbac import require_role
-from app.core.authorization import reference_lease_guard
 from app.schemas.medicine import MedicineCreate, MedicineUpdate
-from app.services.audit_service import create_audit_log
+from app.services.medicines_service import (
+    create_medicine as create_medicine_workflow,
+    get_medicines as get_medicines_workflow,
+    update_medicine as update_medicine_workflow,
+    delete_medicine as delete_medicine_workflow,
+)
 
 
 router = APIRouter()
@@ -19,307 +16,34 @@ router = APIRouter()
 # Reusable helper: Validate medicine ID
 # ---------------------------------------------------------
 
-def get_medicine_object_id(medicine_id: str):
-
-    try:
-        return ObjectId(medicine_id)
-
-    except InvalidId:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid medicine ID"
-        )
-
-
-# ---------------------------------------------------------
-# Create medicine
-# ---------------------------------------------------------
 
 @router.post("/medicines", status_code=201)
 def create_medicine(
-    medicine: MedicineCreate,
-    current_user: dict = Depends(
-        require_role("admin")
-    )
+    medicine: MedicineCreate, current_user: dict = Depends(require_role("admin"))
 ):
+    return create_medicine_workflow(medicine, current_user)
 
-    # Check duplicate medicine
-    existing_medicine = medicines_collection.find_one(
-        {
-            "name": medicine.name,
-            "manufacturer": medicine.manufacturer
-        }
-    )
-
-    if existing_medicine:
-        raise HTTPException(
-            status_code=400,
-            detail="This medicine from this manufacturer already exists"
-        )
-
-    medicine_data = medicine.model_dump()
-
-    # Convert date to string before storing in MongoDB
-    medicine_data["expiry_date"] = (
-        medicine.expiry_date.isoformat()
-    )
-
-    try:
-        result = medicines_collection.insert_one(medicine_data)
-    except DuplicateKeyError:
-        raise HTTPException(
-            status_code=409,
-            detail="This medicine from this manufacturer already exists",
-        )
-
-    create_audit_log(
-        action="CREATE",
-        collection="medicines",
-        record_id=str(result.inserted_id),
-        current_user=current_user
-    )
-
-    return {
-        "message": "Medicine created successfully"
-    }
-
-
-# ---------------------------------------------------------
-# Get all medicines
-# ---------------------------------------------------------
 
 @router.get("/medicines")
 def get_medicines(
     current_user: dict = Depends(
-        require_role(
-            "admin",
-            "doctor",
-            "nurse",
-            "receptionist"
-        )
+        require_role("admin", "doctor", "nurse", "receptionist")
     )
 ):
+    return get_medicines_workflow(current_user)
 
-    medicines = list(
-        medicines_collection.find(
-            {},
-            {
-                "_id": 0,
-                "_pending_reference_writes": 0,
-                "_pending_prescription_reservations": 0,
-                "_pending_reference_leases": 0,
-                "_prescription_reservation_leases": 0,
-                "_stock_restore_operations": 0,
-            }
-        )
-    )
-
-    return medicines
-
-
-# ---------------------------------------------------------
-# Update medicine
-# ---------------------------------------------------------
 
 @router.put("/medicines/{medicine_id}")
 def update_medicine(
     medicine_id: str,
     medicine: MedicineUpdate,
-    current_user: dict = Depends(
-        require_role("admin")
-    )
+    current_user: dict = Depends(require_role("admin")),
 ):
+    return update_medicine_workflow(medicine_id, medicine, current_user)
 
-    # Validate medicine ID
-    medicine_object_id = get_medicine_object_id(
-        medicine_id
-    )
-
-    # Check medicine exists
-    existing_medicine = medicines_collection.find_one(
-        {"_id": medicine_object_id}
-    )
-
-    if not existing_medicine:
-        raise HTTPException(
-            status_code=404,
-            detail="Medicine not found"
-        )
-
-    # Get only fields provided by the user
-    update_data = medicine.model_dump(
-        exclude_unset=True
-    )
-
-    # Prevent empty update
-    if not update_data:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one field is required for update"
-        )
-
-    # Check duplicate medicine when
-    # name or manufacturer is being updated
-    if (
-        "name" in update_data
-        or "manufacturer" in update_data
-    ):
-
-        medicine_name = update_data.get(
-            "name",
-            existing_medicine["name"]
-        )
-
-        medicine_manufacturer = update_data.get(
-            "manufacturer",
-            existing_medicine["manufacturer"]
-        )
-
-        duplicate_medicine = medicines_collection.find_one(
-            {
-                "name": medicine_name,
-                "manufacturer": medicine_manufacturer,
-                "_id": {
-                    "$ne": medicine_object_id
-                }
-            }
-        )
-
-        if duplicate_medicine:
-            raise HTTPException(
-                status_code=400,
-                detail="Another medicine with this name and manufacturer already exists"
-            )
-
-    # Convert date to string before MongoDB update
-    if "expiry_date" in update_data:
-
-        update_data["expiry_date"] = (
-            update_data["expiry_date"].isoformat()
-        )
-
-    # Update only provided fields
-    medicine_update_filter = {
-        "_id": medicine_object_id,
-        "$and": [
-            reference_lease_guard(),
-            {
-                "$or": [
-                    {"_prescription_reservation_leases": {"$exists": False}},
-                    {
-                        "_prescription_reservation_leases": {
-                            "$not": {
-                                "$elemMatch": {
-                                    "expires_at": {"$gt": datetime.now(timezone.utc)}
-                                }
-                            }
-                        }
-                    },
-                ]
-            },
-        ],
-    }
-    if "quantity" in update_data:
-        # Do not overwrite a concurrent prescription's stock decrement.
-        medicine_update_filter["quantity"] = existing_medicine["quantity"]
-
-    try:
-        update_result = medicines_collection.update_one(
-            medicine_update_filter,
-            {"$set": update_data},
-        )
-    except DuplicateKeyError:
-        raise HTTPException(
-            status_code=409,
-            detail="Another medicine with this name and manufacturer already exists",
-        )
-
-    if update_result.matched_count == 0:
-        raise HTTPException(
-            status_code=409,
-            detail="Medicine stock changed concurrently; reload and retry",
-        )
-
-    create_audit_log(
-        action="UPDATE",
-        collection="medicines",
-        record_id=str(medicine_object_id),
-        current_user=current_user
-    )
-
-    return {
-        "message": "Medicine updated successfully"
-    }
-
-
-# ---------------------------------------------------------
-# Delete medicine
-# ---------------------------------------------------------
 
 @router.delete("/medicines/{medicine_id}")
 def delete_medicine(
-    medicine_id: str,
-    current_user: dict = Depends(
-        require_role("admin")
-    )
+    medicine_id: str, current_user: dict = Depends(require_role("admin"))
 ):
-
-    # Validate medicine ID
-    medicine_object_id = get_medicine_object_id(
-        medicine_id
-    )
-
-    if prescriptions_collection.find_one({
-        "$or": [
-            {"medicine_id": medicine_object_id},
-            {"stock_transition.previous_medicine_id": medicine_object_id},
-            {"stock_transition.target_medicine_id": medicine_object_id},
-        ]
-    }):
-        raise HTTPException(
-            status_code=409,
-            detail="Medicine cannot be deleted while prescriptions reference it",
-        )
-
-    result = medicines_collection.delete_one({
-        "_id": medicine_object_id,
-        "$and": [
-            reference_lease_guard(),
-            {
-                "$or": [
-                    {"_prescription_reservation_leases": {"$exists": False}},
-                    {
-                        "_prescription_reservation_leases": {
-                            "$not": {
-                                "$elemMatch": {
-                                    "expires_at": {"$gt": datetime.now(timezone.utc)}
-                                }
-                            }
-                        }
-                    },
-                ]
-            },
-        ],
-    })
-
-    if result.deleted_count == 0:
-        if medicines_collection.find_one({"_id": medicine_object_id}):
-            raise HTTPException(
-                status_code=409,
-                detail="Medicine has an in-progress write; retry deletion",
-            )
-        raise HTTPException(
-            status_code=404,
-            detail="Medicine not found"
-        )
-
-    create_audit_log(
-        action="DELETE",
-        collection="medicines",
-        record_id=str(medicine_object_id),
-        current_user=current_user
-    )
-
-    return {
-        "message": "Medicine deleted successfully"
-    }
+    return delete_medicine_workflow(medicine_id, current_user)
