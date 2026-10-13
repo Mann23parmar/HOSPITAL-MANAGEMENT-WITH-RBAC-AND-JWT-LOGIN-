@@ -178,6 +178,113 @@ class PrescriptionServiceIntegrationTests(TestCase):
             self.db.medicines.find_one({"_id": medicine_id})["quantity"], 0
         )
 
+    def test_concurrent_prescription_creates_never_oversell_stock(self):
+        medicine_id = self.medicine(5)
+
+        def create(_):
+            try:
+                workflow.create_prescription(self.payload(medicine_id, 1), self.admin)
+                return True
+            except HTTPException as error:
+                if error.status_code == 400:
+                    return False
+                raise
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            results = list(pool.map(create, range(10)))
+
+        self.assertEqual(sum(results), 5)
+        self.assertEqual(self.db.prescriptions.count_documents({}), 5)
+        self.assertEqual(
+            self.db.medicines.find_one({"_id": medicine_id})["quantity"], 0
+        )
+
+    def test_startup_recovery_completes_an_expired_interrupted_swap(self):
+        previous_id, target_id, prescription_id = ObjectId(), ObjectId(), ObjectId()
+        self.db.medicines.insert_many(
+            [
+                {"_id": previous_id, "quantity": 0},
+                {
+                    "_id": target_id,
+                    "quantity": 8,
+                    "_prescription_reservation_leases": [
+                        {
+                            "lease_id": "startup-swap",
+                            "quantity": 2,
+                            "expires_at": datetime.now(timezone.utc)
+                            - timedelta(seconds=1),
+                        }
+                    ],
+                },
+            ]
+        )
+        self.db.prescriptions.insert_one(
+            {
+                "_id": prescription_id,
+                "medicine_id": target_id,
+                "stock_transition": {
+                    "reservation_id": "startup-swap",
+                    "previous_medicine_id": previous_id,
+                    "target_medicine_id": target_id,
+                    "quantity": 2,
+                    "expires_at": datetime.now(timezone.utc) - timedelta(seconds=1),
+                },
+            }
+        )
+
+        from app.main import recover_abandoned_stock_reservations
+
+        recover_abandoned_stock_reservations()
+
+        self.assertEqual(
+            self.db.medicines.find_one({"_id": previous_id})["quantity"], 2
+        )
+        self.assertEqual(
+            self.db.medicines.find_one({"_id": target_id})["quantity"], 8
+        )
+        self.assertNotIn(
+            "stock_transition", self.db.prescriptions.find_one({"_id": prescription_id})
+        )
+
+    def test_interrupted_swap_before_prescription_update_refunds_target_stock(self):
+        previous_id, target_id, prescription_id = ObjectId(), ObjectId(), ObjectId()
+        self.db.medicines.insert_many(
+            [
+                {"_id": previous_id, "quantity": 3},
+                {
+                    "_id": target_id,
+                    "quantity": 6,
+                    "_prescription_reservation_leases": [
+                        {"lease_id": "rollback-swap", "quantity": 2}
+                    ],
+                },
+            ]
+        )
+        self.db.prescriptions.insert_one(
+            {
+                "_id": prescription_id,
+                "medicine_id": previous_id,
+                "stock_transition": {
+                    "reservation_id": "rollback-swap",
+                    "previous_medicine_id": previous_id,
+                    "target_medicine_id": target_id,
+                    "quantity": 2,
+                },
+            }
+        )
+
+        stock.recover_stock_transition("rollback-swap")
+
+        self.assertEqual(
+            self.db.medicines.find_one({"_id": previous_id})["quantity"], 3
+        )
+        self.assertEqual(
+            self.db.medicines.find_one({"_id": target_id})["quantity"], 8
+        )
+        self.assertNotIn(
+            "stock_transition", self.db.prescriptions.find_one({"_id": prescription_id})
+        )
+
     def test_recovery_can_retry_after_database_error_without_double_restore(self):
         previous_id, target_id, prescription_id = ObjectId(), ObjectId(), ObjectId()
         self.db.medicines.insert_many(
