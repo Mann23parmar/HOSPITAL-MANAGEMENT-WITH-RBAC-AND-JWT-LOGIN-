@@ -1,3 +1,5 @@
+from datetime import date
+
 from bson import ObjectId
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
@@ -13,7 +15,7 @@ from app.database.connection import (
     prescriptions_collection,
     patient_vitals_collection,
 )
-from app.schemas.patient import PatientCreate, PatientUpdate
+from app.schemas.patient import PatientCreate, PatientUpdate, age_from_date_of_birth
 from app.services.audit_service import create_audit_log
 
 
@@ -76,6 +78,18 @@ def update_patient(patient_id: str, patient: PatientUpdate, current_user: dict):
         raise HTTPException(
             status_code=400, detail="At least one field is required for update"
         )
+    if "age" in update_data or "date_of_birth" in update_data:
+        updated_age = update_data.get("age", existing_patient["age"])
+        updated_birth_date = update_data.get(
+            "date_of_birth",
+            date.fromisoformat(existing_patient["date_of_birth"]),
+        )
+        expected_age = age_from_date_of_birth(updated_birth_date)
+        if updated_age != expected_age:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Age must match date of birth; the calculated age is {expected_age}",
+            )
     if "phone" in update_data:
         existing_phone = patients_collection.find_one(
             {"phone": update_data["phone"], "_id": {"$ne": patient_object_id}}

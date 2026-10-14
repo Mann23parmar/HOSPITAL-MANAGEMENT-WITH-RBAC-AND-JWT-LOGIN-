@@ -6,6 +6,7 @@ The tests use a temporary database and real concurrent MongoDB updates.
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
+from threading import Barrier
 from unittest import TestCase, mock
 from uuid import uuid4
 
@@ -14,6 +15,8 @@ from fastapi import HTTPException
 from pymongo import MongoClient
 
 from app.core.config import settings
+PRESCRIPTION_BOOTSTRAP_DATABASE = f"hpr_boot_{uuid4().hex[:12]}"
+settings.database_name = PRESCRIPTION_BOOTSTRAP_DATABASE
 from app.routes.prescriptions import router
 from app.schemas.prescription import PrescriptionCreate, PrescriptionUpdate
 from app.services import prescription_service as workflow
@@ -46,6 +49,7 @@ class PrescriptionServiceIntegrationTests(TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.client.drop_database(cls.db.name)
+        cls.client.drop_database(PRESCRIPTION_BOOTSTRAP_DATABASE)
         for (module, name), collection in cls.originals.items():
             setattr(module, name, collection)
         audit_service.audit_logs_collection = cls.original_audit_collection
@@ -246,6 +250,17 @@ class PrescriptionServiceIntegrationTests(TestCase):
             "stock_transition", self.db.prescriptions.find_one({"_id": prescription_id})
         )
 
+    def test_startup_recovery_error_propagates_and_prevents_startup(self):
+        from app import main
+
+        with mock.patch.object(
+            main,
+            "reconcile_expired_stock_reservations",
+            side_effect=RuntimeError("MongoDB recovery failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "MongoDB recovery failed"):
+                main.recover_abandoned_stock_reservations()
+
     def test_interrupted_swap_before_prescription_update_refunds_target_stock(self):
         previous_id, target_id, prescription_id = ObjectId(), ObjectId(), ObjectId()
         self.db.medicines.insert_many(
@@ -309,15 +324,16 @@ class PrescriptionServiceIntegrationTests(TestCase):
         update = stock.medicines_collection.update_one
         failed = False
 
-        def fail_once(query, changes, *args, **kwargs):
+        def apply_then_fail_once(query, changes, *args, **kwargs):
             nonlocal failed
             if query.get("_id") == previous_id and not failed:
                 failed = True
+                update(query, changes, *args, **kwargs)
                 raise RuntimeError("temporary database failure")
             return update(query, changes, *args, **kwargs)
 
         with mock.patch.object(
-            stock.medicines_collection, "update_one", side_effect=fail_once
+            stock.medicines_collection, "update_one", side_effect=apply_then_fail_once
         ):
             with self.assertRaises(RuntimeError):
                 stock.recover_stock_transition(reservation_id)
@@ -329,6 +345,45 @@ class PrescriptionServiceIntegrationTests(TestCase):
         self.assertNotIn(
             "stock_transition", self.db.prescriptions.find_one({"_id": prescription_id})
         )
+
+    def test_interrupted_delete_retry_does_not_restore_stock_twice(self):
+        medicine_id, prescription_id = ObjectId(), ObjectId()
+        reservation_id = str(uuid4())
+        self.db.medicines.insert_one({"_id": medicine_id, "quantity": 0})
+        self.db.prescriptions.insert_one(
+            {
+                "_id": prescription_id,
+                "medicine_id": medicine_id,
+                "stock_transition": {
+                    "action": "delete",
+                    "reservation_id": reservation_id,
+                    "previous_medicine_id": medicine_id,
+                    "quantity": 3,
+                },
+            }
+        )
+        delete_one = stock.prescriptions_collection.delete_one
+        failed = False
+
+        def fail_delete_once(query, *args, **kwargs):
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise RuntimeError("temporary delete failure")
+            return delete_one(query, *args, **kwargs)
+
+        with mock.patch.object(
+            stock.prescriptions_collection,
+            "delete_one",
+            side_effect=fail_delete_once,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "temporary delete failure"):
+                stock.recover_stock_transition(reservation_id)
+            stock.recover_stock_transition(reservation_id)
+        self.assertEqual(
+            self.db.medicines.find_one({"_id": medicine_id})["quantity"], 3
+        )
+        self.assertEqual(self.db.prescriptions.count_documents({}), 0)
 
     def test_parallel_recovery_workers_process_a_transition_once(self):
         previous_id, target_id, prescription_id = ObjectId(), ObjectId(), ObjectId()
@@ -362,12 +417,21 @@ class PrescriptionServiceIntegrationTests(TestCase):
                 },
             }
         )
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            list(
-                pool.map(
-                    lambda _: stock.reconcile_expired_stock_reservations(), range(4)
-                )
-            )
+        original_find_one = stock.prescriptions_collection.find_one
+        readers_at_transition = Barrier(4)
+
+        def synchronized_find_one(query, *args, **kwargs):
+            if query.get("stock_transition.reservation_id") == "swap-once":
+                readers_at_transition.wait(timeout=5)
+            return original_find_one(query, *args, **kwargs)
+
+        with mock.patch.object(
+            stock.prescriptions_collection,
+            "find_one",
+            side_effect=synchronized_find_one,
+        ):
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda _: stock.recover_stock_transition("swap-once"), range(4)))
         self.assertEqual(
             self.db.medicines.find_one({"_id": previous_id})["quantity"], 2
         )
