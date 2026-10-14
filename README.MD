@@ -1,5 +1,9 @@
 # 🏥 Hospital Management System
 
+Before deploying a version that changes MongoDB indexes, follow
+[DATABASE_MIGRATION.md](DATABASE_MIGRATION.md) to back up the database and run
+the explicit index pre-check/migration command.
+
 A backend Hospital Management System built with **FastAPI** and **MongoDB**.
 
 ## 🚀 Tech Stack

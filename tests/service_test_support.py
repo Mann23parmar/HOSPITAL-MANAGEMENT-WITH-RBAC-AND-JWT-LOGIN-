@@ -6,8 +6,7 @@ from bson import ObjectId
 from pymongo import MongoClient
 
 from app.core.config import settings
-BOOTSTRAP_DATABASE = f"hsvc_boot_{uuid4().hex[:12]}"
-settings.database_name = BOOTSTRAP_DATABASE
+from app.database.index_migration import migrate_indexes
 
 from app.core import authorization
 from app.services import (
@@ -54,6 +53,7 @@ class ServiceIntegrationTestCase(TestCase):
         cls.client = MongoClient(settings.MONGO_URL, serverSelectionTimeoutMS=2000)
         cls.client.admin.command("ping")
         cls.db = cls.client[f"hospital_service_test_{uuid4().hex}"]
+        migrate_indexes(cls.db, output=lambda _message: None)
         cls.originals = []
         for module in SERVICE_MODULES:
             for name in COLLECTION_NAMES:
@@ -63,23 +63,10 @@ class ServiceIntegrationTestCase(TestCase):
                     setattr(module, attr, cls.db[name])
         cls.original_audit = audit_service.audit_logs_collection
         audit_service.audit_logs_collection = cls.db.audit_logs
-        cls.db.patients.create_index("phone", unique=True)
-        cls.db.departments.create_index("name", unique=True)
-        cls.db.doctors.create_index("user_id", unique=True, partialFilterExpression={"_unique_user_profile": True})
-        cls.db.doctors.create_index("phone", unique=True)
-        cls.db.nurses.create_index("user_id", unique=True)
-        cls.db.nurses.create_index("phone", unique=True)
-        cls.db.appointments.create_index([("doctor_id", 1), ("appointment_date", 1), ("appointment_time", 1)], unique=True, partialFilterExpression={"status": "scheduled"})
-        cls.db.medical_records.create_index("appointment_id", unique=True, partialFilterExpression={"appointment_id": {"$type": "objectId"}})
-        cls.db.medicines.create_index([("name", 1), ("manufacturer", 1)], unique=True, partialFilterExpression={"name": {"$type": "string"}, "manufacturer": {"$type": "string"}})
-        cls.db.users.create_index("email_normalized", unique=True, partialFilterExpression={"email_normalized": {"$type": "string"}})
-        cls.db.users.create_index("role", unique=True, partialFilterExpression={"role": "admin"})
-        cls.db.admin_invitations.create_index("token_hash", unique=True)
 
     @classmethod
     def tearDownClass(cls):
         cls.client.drop_database(cls.db.name)
-        cls.client.drop_database(BOOTSTRAP_DATABASE)
         for module, attr, original in cls.originals:
             setattr(module, attr, original)
         audit_service.audit_logs_collection = cls.original_audit

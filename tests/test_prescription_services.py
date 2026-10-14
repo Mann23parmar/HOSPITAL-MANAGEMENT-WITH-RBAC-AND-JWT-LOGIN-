@@ -15,8 +15,6 @@ from fastapi import HTTPException
 from pymongo import MongoClient
 
 from app.core.config import settings
-PRESCRIPTION_BOOTSTRAP_DATABASE = f"hpr_boot_{uuid4().hex[:12]}"
-settings.database_name = PRESCRIPTION_BOOTSTRAP_DATABASE
 from app.routes.prescriptions import router
 from app.schemas.prescription import PrescriptionCreate, PrescriptionUpdate
 from app.services import prescription_service as workflow
@@ -49,7 +47,6 @@ class PrescriptionServiceIntegrationTests(TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.client.drop_database(cls.db.name)
-        cls.client.drop_database(PRESCRIPTION_BOOTSTRAP_DATABASE)
         for (module, name), collection in cls.originals.items():
             setattr(module, name, collection)
         audit_service.audit_logs_collection = cls.original_audit_collection
