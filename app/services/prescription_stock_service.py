@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+import logging
 from uuid import uuid4
 
 from bson import ObjectId
@@ -6,6 +7,27 @@ from bson.errors import InvalidId
 from fastapi import HTTPException
 
 from app.database.connection import medicines_collection, prescriptions_collection
+
+logger = logging.getLogger(__name__)
+
+
+class CorruptStockTransitionError(RuntimeError):
+    """A transition cannot be reconciled without risking an incorrect stock change."""
+
+    def __init__(self, prescription_id, reservation_id: str, reason: str):
+        super().__init__(reason)
+        self.prescription_id = prescription_id
+        self.reservation_id = reservation_id
+
+
+def _log_corrupt_transition(error: CorruptStockTransitionError) -> None:
+    logger.error(
+        "Stock transition recovery left pending: prescription_id=%s "
+        "reservation_id=%s reason=%s",
+        error.prescription_id,
+        error.reservation_id,
+        error,
+    )
 
 
 def get_available_medicine(medicine_id: str):
@@ -51,7 +73,10 @@ def _reconcile_expired_stock_reservations(medicine_object_id: ObjectId) -> None:
             {"stock_transition.reservation_id": lease["lease_id"]}
         )
         if transition:
-            recover_stock_transition(lease["lease_id"])
+            try:
+                recover_stock_transition(lease["lease_id"])
+            except CorruptStockTransitionError as error:
+                _log_corrupt_transition(error)
             continue
         lease_filter = {
             "_id": medicine_object_id,
@@ -147,13 +172,17 @@ def recover_stock_transition(reservation_id: str) -> None:
             },
         )
         if not medicines_collection.find_one({"_id": previous_medicine_id}):
-            raise RuntimeError(
-                "Cannot recover prescription stock transition: previous medicine is missing"
+            raise CorruptStockTransitionError(
+                prescription["_id"],
+                reservation_id,
+                "Cannot recover prescription stock transition: previous medicine is missing",
             )
         finish_stock_reservation(target_medicine_id, reservation_id)
     else:
-        raise RuntimeError(
-            "Cannot recover prescription stock transition: medicine changed unexpectedly"
+        raise CorruptStockTransitionError(
+            prescription["_id"],
+            reservation_id,
+            "Cannot recover prescription stock transition: medicine changed unexpectedly",
         )
 
     finish_stock_reservation(previous_medicine_id, reservation_id)
@@ -167,7 +196,7 @@ def recover_stock_transition(reservation_id: str) -> None:
 
 
 def reconcile_stock_transitions() -> None:
-    """Recover incomplete medicine swaps before serving application requests."""
+    """Recover valid swaps and leave unsafe transitions pending for investigation."""
     now = datetime.now(timezone.utc)
     transitions = prescriptions_collection.find(
         {
@@ -180,7 +209,12 @@ def reconcile_stock_transitions() -> None:
         {"stock_transition.reservation_id": 1},
     )
     for prescription in transitions:
-        recover_stock_transition(prescription["stock_transition"]["reservation_id"])
+        reservation_id = prescription["stock_transition"]["reservation_id"]
+        try:
+            recover_stock_transition(reservation_id)
+        except CorruptStockTransitionError as error:
+            # Isolate known data corruption, but let database/unexpected errors fail startup.
+            _log_corrupt_transition(error)
 
 
 def reconcile_expired_stock_reservations() -> None:

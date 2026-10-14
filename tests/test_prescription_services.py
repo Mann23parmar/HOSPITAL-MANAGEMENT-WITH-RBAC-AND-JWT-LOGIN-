@@ -258,6 +258,86 @@ class PrescriptionServiceIntegrationTests(TestCase):
             with self.assertRaisesRegex(RuntimeError, "MongoDB recovery failed"):
                 main.recover_abandoned_stock_reservations()
 
+    def test_startup_logs_and_preserves_corrupt_transitions(self):
+        from app import main
+
+        target_id = ObjectId()
+        missing_previous_id = ObjectId()
+        previous_id, unexpected_id = ObjectId(), ObjectId()
+        missing_previous_prescription_id = ObjectId()
+        unexpected_prescription_id = ObjectId()
+        expired = datetime.now(timezone.utc) - timedelta(seconds=1)
+        self.db.medicines.insert_many(
+            [
+                {
+                    "_id": target_id,
+                    "quantity": 8,
+                    "_prescription_reservation_leases": [
+                        {"lease_id": "missing-prev", "quantity": 2, "expires_at": expired}
+                    ],
+                },
+                {"_id": previous_id, "quantity": 4},
+                {"_id": unexpected_id, "quantity": 7},
+            ]
+        )
+        self.db.prescriptions.insert_many(
+            [
+                {
+                    "_id": missing_previous_prescription_id,
+                    "medicine_id": target_id,
+                    "stock_transition": {
+                        "reservation_id": "missing-prev",
+                        "previous_medicine_id": missing_previous_id,
+                        "target_medicine_id": target_id,
+                        "quantity": 2,
+                        "expires_at": expired,
+                    },
+                },
+                {
+                    "_id": unexpected_prescription_id,
+                    "medicine_id": unexpected_id,
+                    "stock_transition": {
+                        "reservation_id": "unexpected-medicine",
+                        "previous_medicine_id": previous_id,
+                        "target_medicine_id": target_id,
+                        "quantity": 3,
+                        "expires_at": expired,
+                    },
+                },
+            ]
+        )
+
+        with self.assertLogs(stock.logger, level="ERROR") as logs:
+            main.recover_abandoned_stock_reservations()
+        joined_logs = "\n".join(logs.output)
+        self.assertIn(str(missing_previous_prescription_id), joined_logs)
+        self.assertIn("missing-prev", joined_logs)
+        self.assertIn("previous medicine is missing", joined_logs)
+        self.assertIn(str(unexpected_prescription_id), joined_logs)
+        self.assertIn("unexpected-medicine", joined_logs)
+        self.assertIn("medicine changed unexpectedly", joined_logs)
+
+        # Neither transition is discarded or repaired by guessing at stock values.
+        self.assertEqual(
+            self.db.prescriptions.count_documents({"stock_transition": {"$exists": True}}),
+            2,
+        )
+        self.assertEqual(self.db.medicines.find_one({"_id": target_id})["quantity"], 8)
+        self.assertEqual(self.db.medicines.find_one({"_id": previous_id})["quantity"], 4)
+        self.assertEqual(self.db.medicines.find_one({"_id": unexpected_id})["quantity"], 7)
+
+        # Manual retries keep raising a typed RuntimeError and leave the record pending.
+        for reservation_id, reason in (
+            ("missing-prev", "previous medicine is missing"),
+            ("unexpected-medicine", "medicine changed unexpectedly"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, reason):
+                stock.recover_stock_transition(reservation_id)
+        self.assertEqual(
+            self.db.prescriptions.count_documents({"stock_transition": {"$exists": True}}),
+            2,
+        )
+
     def test_interrupted_swap_before_prescription_update_refunds_target_stock(self):
         previous_id, target_id, prescription_id = ObjectId(), ObjectId(), ObjectId()
         self.db.medicines.insert_many(
