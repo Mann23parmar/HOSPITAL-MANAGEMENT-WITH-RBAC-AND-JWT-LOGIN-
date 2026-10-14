@@ -7,6 +7,20 @@ from app.services import departments_service as service
 
 
 class DepartmentServiceTests(ServiceIntegrationTestCase):
+    def test_department_list_paginates_in_stable_id_order(self):
+        for index in range(12):
+            self.add_department(f"Page Department {index:02d}")
+
+        first_page = service.get_departments(self.admin)
+        self.assertEqual(len(first_page), 10)
+        self.assertEqual(first_page[0]["name"], "Page Department 00")
+        self.assertEqual(first_page[-1]["name"], "Page Department 09")
+        self.assertEqual(
+            [item["name"] for item in service.get_departments(self.admin, skip=10, limit=2)],
+            ["Page Department 10", "Page Department 11"],
+        )
+        self.assertEqual(service.get_departments(self.admin, skip=100, limit=10), [])
+
     def test_create_list_update_and_delete_department(self):
         service.create_department(DepartmentCreate(name="Cardiology", location="3rd Floor", description="Heart care services"), self.admin)
         saved = self.db.departments.find_one({"name": "Cardiology"})

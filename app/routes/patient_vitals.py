@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.core.rbac import require_role
 from app.schemas.patient_vitals import PatientVitalsCreate, PatientVitalsUpdate
 from app.services.patient_vitals_service import (
@@ -25,9 +25,11 @@ def create_patient_vitals(
 
 @router.get("/patient-vitals")
 def get_patient_vitals(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(require_role("admin", "doctor", "nurse"))
 ):
-    return get_patient_vitals_workflow(current_user)
+    return get_patient_vitals_workflow(current_user, skip, limit)
 
 
 @router.put("/patient-vitals/{vitals_id}")

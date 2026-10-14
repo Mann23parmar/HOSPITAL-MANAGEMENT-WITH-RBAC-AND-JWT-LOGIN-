@@ -28,12 +28,12 @@ def create_department(department: DepartmentCreate, current_user: dict):
     return {"message": "Department created successfully"}
 
 
-def get_departments(current_user: dict):
+def get_departments(current_user: dict, skip: int = 0, limit: int = 10):
     departments = list(
         departments_collection.find(
             {},
             {"_id": 0, "_pending_reference_writes": 0, "_pending_reference_leases": 0},
-        )
+        ).sort("_id", 1).skip(skip).limit(limit)
     )
     return departments
 

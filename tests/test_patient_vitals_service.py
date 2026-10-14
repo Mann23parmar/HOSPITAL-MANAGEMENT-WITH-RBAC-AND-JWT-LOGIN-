@@ -35,3 +35,30 @@ class PatientVitalsServiceTests(ServiceIntegrationTestCase):
             service.create_patient_vitals(self.payload(patient_id, second_nurse), actor)
         self.assertEqual(wrong_owner.exception.status_code, 403)
         self.assertEqual(own["nurse_id"], first_nurse)
+
+    def test_vitals_pagination_keeps_nurse_scope_before_paging(self):
+        first_user, second_user = self.add_user("nurse"), self.add_user("nurse")
+        first_nurse, second_nurse = self.add_nurse(first_user), self.add_nurse(second_user)
+        patient_id = self.add_patient()
+        actor = {"user_id": str(first_user), "email": "nurse@example.test", "role": "nurse"}
+        for index in range(12):
+            self.db.patient_vitals.insert_one(
+                {
+                    "patient_id": patient_id,
+                    "nurse_id": first_nurse,
+                    "pulse_rate": 60 + index,
+                }
+            )
+        self.db.patient_vitals.insert_one(
+            {"patient_id": patient_id, "nurse_id": second_nurse, "pulse_rate": 999}
+        )
+
+        first_page = service.get_patient_vitals(actor)
+        self.assertEqual(len(first_page), 10)
+        self.assertEqual(first_page[0]["pulse_rate"], 60)
+        self.assertEqual(first_page[-1]["pulse_rate"], 69)
+        self.assertEqual(
+            [item["pulse_rate"] for item in service.get_patient_vitals(actor, skip=10, limit=2)],
+            [70, 71],
+        )
+        self.assertEqual(service.get_patient_vitals(actor, skip=100, limit=10), [])
