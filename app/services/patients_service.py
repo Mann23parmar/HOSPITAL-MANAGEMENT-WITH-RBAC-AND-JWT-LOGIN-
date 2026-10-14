@@ -43,24 +43,19 @@ def create_patient(patient: PatientCreate, current_user: dict):
     return {"message": "Patient created successfully"}
 
 
-def get_patients(current_user: dict):
+def get_patients(current_user: dict, skip: int = 0, limit: int = 10):
     query = {}
     if current_user["role"] == "doctor":
         doctor = get_current_doctor(current_user)
-        appointments = appointments_collection.find(
-            {"doctor_id": doctor["_id"]}, {"patient_id": 1}
+        patient_ids = appointments_collection.distinct(
+            "patient_id", {"doctor_id": doctor["_id"]}
         )
-        patient_ids = [
-            appointment["patient_id"]
-            for appointment in appointments
-            if "patient_id" in appointment
-        ]
         query = {"_id": {"$in": patient_ids}}
     patients = list(
         patients_collection.find(
             query,
             {"_id": 0, "_pending_reference_writes": 0, "_pending_reference_leases": 0},
-        )
+        ).sort("_id", 1).skip(skip).limit(limit)
     )
     for patient in patients:
         if "created_by" in patient:

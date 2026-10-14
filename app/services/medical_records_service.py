@@ -91,7 +91,7 @@ def create_medical_record(record: MedicalRecordCreate, current_user: dict):
     return {"message": "Medical record created successfully"}
 
 
-def get_medical_records(current_user: dict):
+def get_medical_records(current_user: dict, skip: int = 0, limit: int = 10):
     query = {}
     if current_user["role"] == "doctor":
         current_doctor = get_current_doctor(current_user)
@@ -100,6 +100,9 @@ def get_medical_records(current_user: dict):
         medical_records_collection.aggregate(
             [
                 {"$match": query},
+                {"$sort": {"_id": 1}},
+                {"$skip": skip},
+                {"$limit": limit},
                 {
                     "$lookup": {
                         "from": "patients",

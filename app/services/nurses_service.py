@@ -57,10 +57,13 @@ def create_nurse(nurse: NurseCreate, current_user: dict):
     return {"message": "Nurse created successfully"}
 
 
-def get_nurses(current_user: dict):
+def get_nurses(current_user: dict, skip: int = 0, limit: int = 10):
     nurses = list(
         nurses_collection.aggregate(
             [
+                {"$sort": {"_id": 1}},
+                {"$skip": skip},
+                {"$limit": limit},
                 {
                     "$lookup": {
                         "from": "departments",

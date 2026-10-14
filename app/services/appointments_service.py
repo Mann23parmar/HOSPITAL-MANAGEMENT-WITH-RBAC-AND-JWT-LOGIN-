@@ -55,12 +55,17 @@ def create_appointment(appointment: AppointmentCreate, current_user: dict):
     return {"message": "Appointment created successfully"}
 
 
-def get_appointments(current_user: dict):
+def get_appointments(current_user: dict, skip: int = 0, limit: int = 10):
     query = {}
     if current_user["role"] == "doctor":
         current_doctor = get_current_doctor(current_user)
         query = {"doctor_id": current_doctor["_id"]}
-    appointments = list(appointments_collection.find(query, {"_id": 0}))
+    appointments = list(
+        appointments_collection.find(query, {"_id": 0})
+        .sort("_id", 1)
+        .skip(skip)
+        .limit(limit)
+    )
     for appointment in appointments:
         if "patient_id" in appointment:
             patient_id = str(appointment["patient_id"])

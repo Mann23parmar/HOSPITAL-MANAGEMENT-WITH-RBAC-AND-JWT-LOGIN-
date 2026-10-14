@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.core.rbac import require_role
 from app.schemas.nurse import NurseCreate, NurseUpdate
 from app.services.nurses_service import (
@@ -25,8 +25,12 @@ def create_nurse(
 
 
 @router.get("/nurses")
-def get_nurses(current_user: dict = Depends(require_role("admin", "doctor", "nurse"))):
-    return get_nurses_workflow(current_user)
+def get_nurses(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    current_user: dict = Depends(require_role("admin", "doctor", "nurse")),
+):
+    return get_nurses_workflow(current_user, skip, limit)
 
 
 @router.put("/nurses/{nurse_id}")

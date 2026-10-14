@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.rbac import require_role
 from app.schemas.prescription import PrescriptionCreate, PrescriptionUpdate
@@ -23,9 +23,11 @@ def create_prescription(
 
 @router.get("/prescriptions")
 def get_prescriptions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(require_role("admin", "doctor", "nurse")),
 ):
-    return get_prescriptions_workflow(current_user)
+    return get_prescriptions_workflow(current_user, skip, limit)
 
 
 @router.put("/prescriptions/{prescription_id}")

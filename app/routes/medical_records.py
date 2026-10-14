@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.core.rbac import require_role
 from app.schemas.medical_record import MedicalRecordCreate, MedicalRecordUpdate
 from app.services.medical_records_service import (
@@ -27,9 +27,11 @@ def create_medical_record(
 
 @router.get("/medical-records")
 def get_medical_records(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(require_role("admin", "doctor", "nurse"))
 ):
-    return get_medical_records_workflow(current_user)
+    return get_medical_records_workflow(current_user, skip, limit)
 
 
 @router.put("/medical-records/{record_id}")

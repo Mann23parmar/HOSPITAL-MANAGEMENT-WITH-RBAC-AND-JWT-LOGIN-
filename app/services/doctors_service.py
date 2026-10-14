@@ -61,10 +61,13 @@ def create_doctor(doctor: DoctorCreate, current_user: dict):
     return {"message": "Doctor created successfully"}
 
 
-def get_doctors(current_user: dict):
+def get_doctors(current_user: dict, skip: int = 0, limit: int = 10):
     doctors = list(
         doctors_collection.aggregate(
             [
+                {"$sort": {"_id": 1}},
+                {"$skip": skip},
+                {"$limit": limit},
                 {
                     "$lookup": {
                         "from": "users",

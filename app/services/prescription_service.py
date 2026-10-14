@@ -175,6 +175,8 @@ def create_prescription(
 
 def get_prescriptions(
     current_user: dict,
+    skip: int = 0,
+    limit: int = 10,
 ):
 
     # Admin and nurse can see all prescriptions
@@ -190,7 +192,7 @@ def get_prescriptions(
     prescriptions = list(
         prescriptions_collection.find(
             query, {"_id": 0, "stock_reservation_id": 0, "stock_transition": 0}
-        )
+        ).sort("_id", 1).skip(skip).limit(limit)
     )
 
     for prescription in prescriptions:

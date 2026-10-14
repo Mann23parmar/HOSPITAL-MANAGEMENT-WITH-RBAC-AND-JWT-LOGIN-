@@ -43,7 +43,7 @@ def create_medicine(medicine: MedicineCreate, current_user: dict):
     return {"message": "Medicine created successfully"}
 
 
-def get_medicines(current_user: dict):
+def get_medicines(current_user: dict, skip: int = 0, limit: int = 10):
     medicines = list(
         medicines_collection.find(
             {},
@@ -55,7 +55,7 @@ def get_medicines(current_user: dict):
                 "_prescription_reservation_leases": 0,
                 "_stock_restore_operations": 0,
             },
-        )
+        ).sort("_id", 1).skip(skip).limit(limit)
     )
     return medicines
 

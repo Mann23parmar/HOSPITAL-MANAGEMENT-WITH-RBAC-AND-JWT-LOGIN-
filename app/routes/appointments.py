@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from app.core.rbac import require_role
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate
 from app.services.appointments_service import (
@@ -25,11 +25,13 @@ def create_appointment(
 
 @router.get("/appointments")
 def get_appointments(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(
         require_role("admin", "doctor", "nurse", "receptionist")
     )
 ):
-    return get_appointments_workflow(current_user)
+    return get_appointments_workflow(current_user, skip, limit)
 
 
 @router.put("/appointments/{appointment_id}")
